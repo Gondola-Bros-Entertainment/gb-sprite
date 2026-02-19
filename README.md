@@ -27,8 +27,12 @@ Companion to [gb-synth](https://github.com/Gondola-Bros-Entertainment/gb-synth) 
 - Sprite sheet packing (shelf bin packing) with metadata
 - Built-in 8x8 pixel font (full printable ASCII)
 - Procedural VFX generators (explosion, ring, glow, trail, flash, sparks)
+- Procedural noise (value noise, fractal Brownian motion)
+- Gradients (linear, radial, diagonal)
+- Nine-slice UI panel scaling
+- Ordered Bayer dithering for palette reduction
 - Tilemap rendering from sprite atlas
-- BMP export (32-bit BGRA, ~60 LOC, zero deps beyond bytestring)
+- BMP export (32-bit BGRA, zero deps beyond bytestring)
 - Optional PNG export via JuicyPixels (`juicy-pixels` cabal flag)
 
 **Core dependencies:** `base`, `bytestring`, `vector` — that's it.
@@ -51,8 +55,13 @@ src/GBSprite/
 ├── Text.hs        Built-in 8x8 pixel font rendering
 ├── Tilemap.hs     Tile-based map rendering from atlas
 ├── VFX.hs         Procedural effects (explosion, ring, glow, trail, etc.)
+├── Noise.hs       Value noise, fractal Brownian motion
+├── Gradient.hs    Linear, radial, diagonal gradients
+├── NineSlice.hs   UI panel scaling with border preservation
+├── Dither.hs      Ordered Bayer dithering for palette reduction
 ├── BMP.hs         32-bit BGRA BMP export
-└── Export.hs      Unified export API (BMP always, PNG with flag)
+├── Export.hs      BMP export API (always available)
+└── Export/PNG.hs  PNG export via JuicyPixels (optional flag)
 ```
 
 ### Pipeline
@@ -72,13 +81,13 @@ VFX generators → [Canvas] frames ───────────────
 Add to your `.cabal` file:
 
 ```cabal
-build-depends: gb-sprite >= 0.1
+build-depends: gb-sprite >= 0.2
 ```
 
 For PNG export support:
 
 ```cabal
-build-depends: gb-sprite >= 0.1
+build-depends: gb-sprite >= 0.2
 
 flags: +juicy-pixels
 ```
@@ -86,8 +95,8 @@ flags: +juicy-pixels
 ### Generating sprites
 
 ```haskell
-import GBSprite.Canvas (newCanvas, fillRect, fillCircle)
-import GBSprite.Color (red, blue, transparent)
+import GBSprite.Canvas (newCanvas, fillCircle)
+import GBSprite.Color (red, transparent)
 import GBSprite.BMP (writeBmp)
 
 main :: IO ()
@@ -138,7 +147,10 @@ drawThickLine :: Canvas -> Int -> Int -> Int -> Int -> Int -> Color -> Canvas
 drawPolygon   :: Canvas -> [(Int, Int)] -> Color -> Canvas
 fillPolygon   :: Canvas -> [(Int, Int)] -> Color -> Canvas  -- scanline fill
 drawEllipse   :: Canvas -> Int -> Int -> Int -> Int -> Color -> Canvas
+fillEllipse   :: Canvas -> Int -> Int -> Int -> Int -> Color -> Canvas
 drawBezier    :: Canvas -> (Int,Int) -> (Int,Int) -> (Int,Int) -> Color -> Canvas
+drawRoundRect :: Canvas -> Int -> Int -> Int -> Int -> Int -> Color -> Canvas
+fillRoundRect :: Canvas -> Int -> Int -> Int -> Int -> Int -> Color -> Canvas
 ```
 
 ### Transform
@@ -158,6 +170,46 @@ stamp      :: Canvas -> Int -> Int -> Canvas -> Canvas  -- direct overwrite
 stampAlpha :: Canvas -> Int -> Int -> Canvas -> Canvas   -- alpha blended
 overlay    :: Canvas -> Canvas -> Canvas                 -- same-size blend
 overlayAt  :: Canvas -> Int -> Int -> Canvas -> Canvas   -- offset blend
+```
+
+### Noise
+
+Deterministic procedural noise for textures and terrain:
+
+```haskell
+valueNoise      :: Int -> Int -> Int -> Double -> Canvas              -- width, height, seed, scale
+valueNoiseColor :: Int -> Int -> Int -> Double -> Color -> Color -> Canvas  -- noise between two colors
+fbm             :: Int -> Int -> Int -> Int -> Double -> Canvas       -- fractal Brownian motion
+```
+
+### Gradient
+
+```haskell
+linearGradient   :: Int -> Int -> Color -> Color -> Bool -> Canvas  -- horizontal or vertical
+radialGradient   :: Int -> Int -> Int -> Int -> Int -> Color -> Color -> Canvas  -- center, radius
+diagonalGradient :: Int -> Int -> Color -> Color -> Canvas          -- top-left to bottom-right
+```
+
+### NineSlice
+
+Scale UI panels while preserving borders:
+
+```haskell
+data NineSlice = NineSlice
+  { nsCanvas :: !Canvas, nsLeft :: !Int, nsRight :: !Int, nsTop :: !Int, nsBottom :: !Int }
+
+nineSlice       :: Canvas -> Int -> Int -> Int -> Int -> NineSlice  -- define border regions
+renderNineSlice :: NineSlice -> Int -> Int -> Canvas                -- render at target size
+```
+
+### Dither
+
+Ordered dithering for retro palette reduction:
+
+```haskell
+data DitherMatrix = Bayer2 | Bayer4 | Bayer8
+
+orderedDither :: DitherMatrix -> Palette -> Canvas -> Canvas  -- reduce to palette with dithering
 ```
 
 ### Sheet
@@ -189,13 +241,22 @@ flashFrames      :: Int -> Color -> [Canvas]       -- solid color fade-out
 sparksFrames     :: SparksConfig -> [Canvas]       -- directional spark burst
 ```
 
+### Animation
+
+```haskell
+data PlayMode = Loop | Once | PingPong
+
+animationFrame :: PlayMode -> Int -> Int -> Int  -- mode, total frames, tick → frame index
+animationDone  :: PlayMode -> Int -> Int -> Bool -- mode, total frames, tick → finished?
+```
+
 ### BMP / Export
 
 ```haskell
 encodeBmp :: Canvas -> BS.ByteString               -- pure: canvas → BMP bytes
 writeBmp  :: FilePath -> Canvas -> IO ()            -- write BMP file
 
--- With juicy-pixels flag:
+-- With juicy-pixels flag (GBSprite.Export.PNG):
 exportPng :: FilePath -> Canvas -> IO ()            -- write PNG file
 ```
 
@@ -203,18 +264,25 @@ exportPng :: FilePath -> Canvas -> IO ()            -- write PNG file
 
 ## Example
 
-Generate a sprite sheet with explosion VFX:
+Generate a sprite sheet with explosion VFX and a dithered background:
 
 ```haskell
 import GBSprite.Canvas (newCanvas, fillCircle)
 import GBSprite.Color (red, yellow, transparent)
-import GBSprite.Sheet (packSheet)
+import GBSprite.Dither (DitherMatrix (..), orderedDither)
+import GBSprite.Gradient (linearGradient)
+import GBSprite.Palette (gameboy)
+import GBSprite.Sheet (SpriteSheet (..), packSheet)
 import GBSprite.VFX (ExplosionConfig (..), explosionFrames)
 import GBSprite.BMP (writeBmp)
 
 main :: IO ()
 main = do
-  -- Create a simple character sprite
+  -- Dithered background using Game Boy palette
+  let gradient = linearGradient 64 64 red yellow True
+      background = orderedDither Bayer4 gameboy gradient
+
+  -- Simple character sprite
   let character = fillCircle (newCanvas 16 16 transparent) 8 8 6 red
 
   -- Generate explosion frames
@@ -227,7 +295,8 @@ main = do
         }
 
   -- Pack everything into a sprite sheet
-  let items = ("character", character)
+  let items = ("background", background)
+            : ("character", character)
             : zip (map (\i -> "explosion_" ++ show i) [0::Int ..]) explosion
       sheet = packSheet 1 items
 
@@ -237,9 +306,16 @@ main = do
 
 ---
 
-## License
+## Build & Test
 
-MIT
+Requires [GHCup](https://www.haskell.org/ghcup/) with GHC >= 9.6.
+
+```bash
+cabal build                              # Build library
+cabal test                               # Run all tests (105 pure tests)
+cabal build --ghc-options="-Werror"      # Warnings as errors
+cabal haddock                            # Generate docs
+```
 
 ---
 
