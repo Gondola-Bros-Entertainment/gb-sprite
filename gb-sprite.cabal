@@ -1,6 +1,6 @@
 cabal-version: 3.0
 name:          gb-sprite
-version:       0.1.0.0
+version:       0.2.0.0
 stability:     experimental
 synopsis:      Procedural 2D sprite and VFX generation
 description:

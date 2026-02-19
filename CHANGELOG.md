@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.2.0.0
+
+### New Modules
+
+- **GBSprite.Noise**: Procedural noise generation — `valueNoise`, `valueNoiseColor`, `fbm` (fractal Brownian motion). Deterministic LCG with bilinear interpolation and smoothstep.
+- **GBSprite.Gradient**: Gradient generation — `linearGradient` (horizontal/vertical), `radialGradient`, `diagonalGradient`.
+- **GBSprite.NineSlice**: UI panel scaling — `NineSlice` type with configurable border regions, `renderNineSlice` preserves corners and edges at any target size.
+- **GBSprite.Dither**: Ordered dithering — `orderedDither` with Bayer2, Bayer4, Bayer8 matrices for palette reduction. Classic retro cross-hatch patterns.
+- **GBSprite.Export.PNG**: Separated from Export.hs, eliminating CPP. Only built when `juicy-pixels` flag is enabled.
+
+### Bug Fixes
+
+- Eliminate CPP from Export.hs — split into `GBSprite.Export` (BMP, always available) and `GBSprite.Export.PNG` (optional).
+
+### Internal
+
+- 105 pure tests (up from 62)
+- 12 new Draw function tests (drawThickLine, drawPolygon, fillPolygon, drawEllipse, fillEllipse, drawBezier, drawRoundRect, fillRoundRect)
+- CI: ormolu glob `src/**/*.hs` replaces hardcoded file list
+- CI: jobs chained so lint/format gate build (saves Actions minutes on failure)
+- Metadata: cabal-version 3.0, stability experimental, CHANGELOG.md
+
 ## 0.1.0.0
 
 Initial release.
@@ -47,28 +69,6 @@ Initial release.
 - `paletteSwap`: remap colors
 - Built-in: `gameboy` (4-color Game Boy palette)
 
-### Procedural Noise
-- `valueNoise`: deterministic grayscale noise with bilinear interpolation
-- `valueNoiseColor`: noise between two colors
-- `fbm`: fractal Brownian motion (octave layering)
-
-### Gradients
-- `linearGradient`: horizontal or vertical color transitions
-- `radialGradient`: circular gradient from center point
-- `diagonalGradient`: top-left to bottom-right transition
-
-### Nine-Slice Scaling
-- `NineSlice` type with configurable border regions
-- `renderNineSlice`: scale UI panels preserving corners and edges
-
-### Ordered Dithering
-- `DitherMatrix`: Bayer2, Bayer4, Bayer8
-- `orderedDither`: reduce canvas to palette with Bayer matrix dithering
-
 ### Export
 - `exportBmp`: native BMP file export (always available)
 - `exportPng`: PNG export via JuicyPixels (optional `juicy-pixels` flag)
-
-### Internal
-- 105 pure tests: color math, canvas operations, drawing primitives, transforms, composition, animation, sprites, sheets, text, VFX, BMP encoding, noise, gradients, nine-slice, dithering
-- All partial functions eliminated
