@@ -1,7 +1,8 @@
-cabal-version: 2.4
+cabal-version: 3.0
 name:          gb-sprite
 version:       0.1.0.0
-synopsis:      Procedural 2D sprite and VFX generation for GB games
+stability:     experimental
+synopsis:      Procedural 2D sprite and VFX generation
 description:
   A pure Haskell library for generating 2D sprites, animations,
   and visual effects. No external image libraries — just math.
@@ -37,8 +38,12 @@ library
     GBSprite.Canvas
     GBSprite.Color
     GBSprite.Compose
+    GBSprite.Dither
     GBSprite.Draw
     GBSprite.Export
+    GBSprite.Gradient
+    GBSprite.NineSlice
+    GBSprite.Noise
     GBSprite.Palette
     GBSprite.Sheet
     GBSprite.Sprite

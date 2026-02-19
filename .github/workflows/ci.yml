@@ -86,19 +86,7 @@ jobs:
       - uses: haskell-actions/run-ormolu@v16
         with:
           pattern: |
-            src/GBSprite/Animation.hs
-            src/GBSprite/BMP.hs
-            src/GBSprite/Canvas.hs
-            src/GBSprite/Color.hs
-            src/GBSprite/Compose.hs
-            src/GBSprite/Draw.hs
-            src/GBSprite/Palette.hs
-            src/GBSprite/Sheet.hs
-            src/GBSprite/Sprite.hs
-            src/GBSprite/Text.hs
-            src/GBSprite/Tilemap.hs
-            src/GBSprite/Transform.hs
-            src/GBSprite/VFX.hs
+            src/**/*.hs
             test/**/*.hs
 
   cabal-check:

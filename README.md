@@ -17,7 +17,7 @@
 
 gb-sprite is a pure Haskell library for procedurally generating 2D sprites, animations, and visual effects. Define pixel art, VFX, and sprite sheets programmatically — render to BMP with zero external image dependencies.
 
-Built as a shared library for all [Gondola Bros](https://github.com/Gondola-Bros-Entertainment) games. Each game defines its own sprites and effects using the gb-sprite API. Companion to [gb-synth](https://github.com/Gondola-Bros-Entertainment/gb-synth) (procedural audio).
+Companion to [gb-synth](https://github.com/Gondola-Bros-Entertainment/gb-synth) (procedural audio).
 
 **Features:**
 - Vector-backed RGBA canvas with drawing primitives (lines, circles, polygons, Bezier curves)

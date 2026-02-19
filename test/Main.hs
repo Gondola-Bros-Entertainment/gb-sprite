@@ -9,8 +9,13 @@ import Data.Word (Word8)
 import GBSprite.Animation (animationDone, animationFrame, loopAnimation, onceAnimation, pingPongAnimation)
 import GBSprite.BMP (writeBmp)
 import GBSprite.Canvas (Canvas (..), drawCircle, drawLine, drawRect, fillCircle, fillRect, getPixel, inBounds, newCanvas, setPixel)
-import GBSprite.Color (Color (..), alphaBlend, black, blue, green, lerp, multiply, red, scaleAlpha, transparent, white, withAlpha)
+import GBSprite.Color (Color (..), alphaBlend, black, blue, green, lerp, multiply, red, scaleAlpha, transparent, white, withAlpha, yellow)
 import GBSprite.Compose (overlay, stamp)
+import GBSprite.Dither (DitherMatrix (..), orderedDither)
+import GBSprite.Draw (drawBezier, drawEllipse, drawPolygon, drawRoundRect, drawThickLine, fillEllipse, fillPolygon, fillRoundRect)
+import GBSprite.Gradient (diagonalGradient, linearGradient, radialGradient)
+import GBSprite.NineSlice (nineSlice, renderNineSlice)
+import GBSprite.Noise (fbm, valueNoise, valueNoiseColor)
 import GBSprite.Palette (Palette (..), fromColors, gameboy, paletteColor, paletteSwap)
 import GBSprite.Sheet (SheetEntry (..), SpriteSheet (..), packSheet)
 import GBSprite.Sprite (frameCount, getFrame, singleFrame, spriteHeight, spriteWidth)
@@ -86,6 +91,11 @@ main = do
         ++ testText
         ++ testVFX
         ++ bmpTests
+        ++ testDraw
+        ++ testNoise
+        ++ testGradient
+        ++ testNineSlice
+        ++ testDither
     )
 
 -- ---------------------------------------------------------------------------
@@ -478,6 +488,266 @@ testBmpRoundtrip = do
          in assertEqual "BGRA pixel" (0, 0, 255, 255) (b, g, r, a)
       )
     ]
+
+-- ---------------------------------------------------------------------------
+-- Draw tests
+-- ---------------------------------------------------------------------------
+
+testDraw :: [(String, TestResult)]
+testDraw =
+  [ ( "drawThickLine preserves dimensions",
+      let c = drawThickLine (newCanvas drawSize drawSize transparent) 0 0 15 15 3 red
+       in assertEqual "thick line dims" (drawSize, drawSize) (cWidth c, cHeight c)
+    ),
+    ( "drawThickLine draws pixels",
+      let c = drawThickLine (newCanvas drawSize drawSize transparent) 8 8 8 8 3 red
+       in assertEqual "thick line center" red (getPixel c 8 8)
+    ),
+    ( "drawPolygon preserves dimensions",
+      let c = drawPolygon (newCanvas drawSize drawSize transparent) [(2, 2), (14, 2), (8, 14)] red
+       in assertEqual "polygon dims" (drawSize, drawSize) (cWidth c, cHeight c)
+    ),
+    ( "drawPolygon draws vertex",
+      let c = drawPolygon (newCanvas drawSize drawSize transparent) [(2, 2), (14, 2), (8, 14)] red
+       in assertEqual "polygon vertex" red (getPixel c 2 2)
+    ),
+    ( "fillPolygon fills interior",
+      let c = fillPolygon (newCanvas drawSize drawSize transparent) [(0, 0), (15, 0), (15, 15), (0, 15)] red
+       in assertEqual "filled polygon center" red (getPixel c 8 8)
+    ),
+    ( "drawEllipse preserves dimensions",
+      let c = drawEllipse (newCanvas drawSize drawSize transparent) 8 8 6 4 red
+       in assertEqual "ellipse dims" (drawSize, drawSize) (cWidth c, cHeight c)
+    ),
+    ( "drawEllipse draws on perimeter",
+      let c = drawEllipse (newCanvas drawSize drawSize transparent) 8 8 6 4 red
+       in -- Right edge of ellipse should have a pixel at (14, 8)
+          assertEqual "ellipse right" red (getPixel c 14 8)
+    ),
+    ( "fillEllipse fills center",
+      let c = fillEllipse (newCanvas drawSize drawSize transparent) 8 8 6 4 red
+       in assertEqual "filled ellipse center" red (getPixel c 8 8)
+    ),
+    ( "drawBezier preserves dimensions",
+      let c = drawBezier (newCanvas drawSize drawSize transparent) (0, 0) (8, 15) (15, 0) red
+       in assertEqual "bezier dims" (drawSize, drawSize) (cWidth c, cHeight c)
+    ),
+    ( "drawBezier draws start point",
+      let c = drawBezier (newCanvas drawSize drawSize transparent) (0, 0) (8, 15) (15, 0) red
+       in assertEqual "bezier start" red (getPixel c 0 0)
+    ),
+    ( "drawRoundRect preserves dimensions",
+      let c = drawRoundRect (newCanvas drawSize drawSize transparent) 1 1 14 14 3 red
+       in assertEqual "round rect dims" (drawSize, drawSize) (cWidth c, cHeight c)
+    ),
+    ( "fillRoundRect fills center",
+      let c = fillRoundRect (newCanvas drawSize drawSize transparent) 1 1 14 14 3 red
+       in assertEqual "filled round rect center" red (getPixel c 8 8)
+    )
+  ]
+  where
+    drawSize :: Int
+    drawSize = 16
+
+-- ---------------------------------------------------------------------------
+-- Noise tests
+-- ---------------------------------------------------------------------------
+
+testNoise :: [(String, TestResult)]
+testNoise =
+  [ ( "valueNoise dimensions correct",
+      let c = valueNoise noiseSize noiseSize noiseSeed noiseScale
+       in assertEqual "noise dims" (noiseSize, noiseSize) (cWidth c, cHeight c)
+    ),
+    ( "valueNoise deterministic (same seed same output)",
+      let c1 = valueNoise noiseSize noiseSize noiseSeed noiseScale
+          c2 = valueNoise noiseSize noiseSize noiseSeed noiseScale
+       in assertEqual "noise determinism" c1 c2
+    ),
+    ( "valueNoise different seed different output",
+      let c1 = valueNoise noiseSize noiseSize noiseSeed noiseScale
+          c2 = valueNoise noiseSize noiseSize (noiseSeed + 1) noiseScale
+       in assertTrue "noise different" (c1 /= c2)
+    ),
+    ( "valueNoise values are valid colors",
+      let c = valueNoise noiseSize noiseSize noiseSeed noiseScale
+       in assertTrue "noise valid" (colorA (getPixel c 0 0) == 255)
+    ),
+    ( "valueNoiseColor dimensions correct",
+      let c = valueNoiseColor noiseSize noiseSize noiseSeed noiseScale red blue
+       in assertEqual "color noise dims" (noiseSize, noiseSize) (cWidth c, cHeight c)
+    ),
+    ( "fbm dimensions correct",
+      let c = fbm noiseSize noiseSize noiseSeed fbmOctaves noiseScale
+       in assertEqual "fbm dims" (noiseSize, noiseSize) (cWidth c, cHeight c)
+    ),
+    ( "fbm deterministic",
+      let c1 = fbm noiseSize noiseSize noiseSeed fbmOctaves noiseScale
+          c2 = fbm noiseSize noiseSize noiseSeed fbmOctaves noiseScale
+       in assertEqual "fbm determinism" c1 c2
+    )
+  ]
+  where
+    noiseSize :: Int
+    noiseSize = 16
+
+    noiseSeed :: Int
+    noiseSeed = 42
+
+    noiseScale :: Double
+    noiseScale = 4.0
+
+    fbmOctaves :: Int
+    fbmOctaves = 3
+
+-- ---------------------------------------------------------------------------
+-- Gradient tests
+-- ---------------------------------------------------------------------------
+
+testGradient :: [(String, TestResult)]
+testGradient =
+  [ ( "linearGradient horizontal dimensions",
+      let c = linearGradient gradSize gradSize red blue True
+       in assertEqual "hgrad dims" (gradSize, gradSize) (cWidth c, cHeight c)
+    ),
+    ( "linearGradient horizontal left is start color",
+      let c = linearGradient gradSize gradSize red blue True
+       in assertEqual "hgrad left" red (getPixel c 0 0)
+    ),
+    ( "linearGradient horizontal right is end color",
+      let c = linearGradient gradSize gradSize red blue True
+       in assertEqual "hgrad right" blue (getPixel c (gradSize - 1) 0)
+    ),
+    ( "linearGradient vertical top is start color",
+      let c = linearGradient gradSize gradSize red blue False
+       in assertEqual "vgrad top" red (getPixel c 0 0)
+    ),
+    ( "linearGradient vertical bottom is end color",
+      let c = linearGradient gradSize gradSize red blue False
+       in assertEqual "vgrad bottom" blue (getPixel c 0 (gradSize - 1))
+    ),
+    ( "radialGradient dimensions correct",
+      let c = radialGradient gradSize gradSize (gradSize `div` 2) (gradSize `div` 2) (gradSize `div` 2) white black
+       in assertEqual "radial dims" (gradSize, gradSize) (cWidth c, cHeight c)
+    ),
+    ( "radialGradient center is inner color",
+      let cx = gradSize `div` 2
+          cy = gradSize `div` 2
+          c = radialGradient gradSize gradSize cx cy (gradSize `div` 2) white black
+       in assertEqual "radial center" white (getPixel c cx cy)
+    ),
+    ( "diagonalGradient dimensions correct",
+      let c = diagonalGradient gradSize gradSize red blue
+       in assertEqual "diag dims" (gradSize, gradSize) (cWidth c, cHeight c)
+    ),
+    ( "diagonalGradient top-left is start color",
+      let c = diagonalGradient gradSize gradSize red blue
+       in assertEqual "diag topleft" red (getPixel c 0 0)
+    ),
+    ( "diagonalGradient bottom-right is end color",
+      let c = diagonalGradient gradSize gradSize red blue
+       in assertEqual "diag botright" blue (getPixel c (gradSize - 1) (gradSize - 1))
+    )
+  ]
+  where
+    gradSize :: Int
+    gradSize = 32
+
+-- ---------------------------------------------------------------------------
+-- NineSlice tests
+-- ---------------------------------------------------------------------------
+
+testNineSlice :: [(String, TestResult)]
+testNineSlice =
+  [ ( "renderNineSlice output dimensions match target",
+      let src = newCanvas sliceSrcSize sliceSrcSize red
+          ns = nineSlice src sliceBorder sliceBorder sliceBorder sliceBorder
+          result = renderNineSlice ns sliceTargetW sliceTargetH
+       in assertEqual "nine slice dims" (sliceTargetW, sliceTargetH) (cWidth result, cHeight result)
+    ),
+    ( "renderNineSlice corners preserved",
+      let src = setPixel (newCanvas sliceSrcSize sliceSrcSize blue) 0 0 red
+          ns = nineSlice src sliceBorder sliceBorder sliceBorder sliceBorder
+          result = renderNineSlice ns sliceTargetW sliceTargetH
+       in assertEqual "nine slice corner" red (getPixel result 0 0)
+    ),
+    ( "renderNineSlice center fills",
+      let src = fillRect (newCanvas sliceSrcSize sliceSrcSize red) sliceBorder sliceBorder (sliceSrcSize - 2 * sliceBorder) (sliceSrcSize - 2 * sliceBorder) green
+          ns = nineSlice src sliceBorder sliceBorder sliceBorder sliceBorder
+          result = renderNineSlice ns sliceTargetW sliceTargetH
+          midX = sliceTargetW `div` 2
+          midY = sliceTargetH `div` 2
+       in assertEqual "nine slice center" green (getPixel result midX midY)
+    ),
+    ( "renderNineSlice smaller than source",
+      let src = newCanvas sliceSrcSize sliceSrcSize red
+          ns = nineSlice src 1 1 1 1
+          result = renderNineSlice ns 4 4
+       in assertEqual "nine slice small dims" (4, 4) (cWidth result, cHeight result)
+    )
+  ]
+  where
+    sliceSrcSize :: Int
+    sliceSrcSize = 12
+
+    sliceBorder :: Int
+    sliceBorder = 3
+
+    sliceTargetW :: Int
+    sliceTargetW = 32
+
+    sliceTargetH :: Int
+    sliceTargetH = 24
+
+-- ---------------------------------------------------------------------------
+-- Dither tests
+-- ---------------------------------------------------------------------------
+
+testDither :: [(String, TestResult)]
+testDither =
+  [ ( "orderedDither output dimensions preserved",
+      let c = newCanvas ditherSize ditherSize red
+          result = orderedDither Bayer4 testPal c
+       in assertEqual "dither dims" (ditherSize, ditherSize) (cWidth result, cHeight result)
+    ),
+    ( "orderedDither output contains only palette colors",
+      let c = linearGradient ditherSize ditherSize black white True
+          result = orderedDither Bayer4 bwPal c
+          allPalette = all (\(x, y) -> getPixel result x y `elem` [black, white]) coords
+       in assertTrue "palette only" allPalette
+    ),
+    ( "orderedDither Bayer2 works",
+      let c = newCanvas ditherSize ditherSize (Color 128 128 128 255)
+          result = orderedDither Bayer2 bwPal c
+       in assertEqual "bayer2 dims" (ditherSize, ditherSize) (cWidth result, cHeight result)
+    ),
+    ( "orderedDither Bayer8 works",
+      let c = newCanvas ditherSize ditherSize (Color 128 128 128 255)
+          result = orderedDither Bayer8 bwPal c
+       in assertEqual "bayer8 dims" (ditherSize, ditherSize) (cWidth result, cHeight result)
+    ),
+    ( "orderedDither empty palette is identity",
+      let c = newCanvas ditherSize ditherSize red
+          result = orderedDither Bayer4 (Palette []) c
+       in assertEqual "empty palette" c result
+    )
+  ]
+  where
+    ditherSize :: Int
+    ditherSize = 8
+
+    bwPal :: Palette
+    bwPal = fromColors [black, white]
+
+    testPal :: Palette
+    testPal = fromColors [red, green, blue, yellow]
+
+    coords :: [(Int, Int)]
+    coords = [(x, y) | x <- [0 .. ditherSize - 1], y <- [0 .. ditherSize - 1]]
+
+-- ---------------------------------------------------------------------------
+-- Helpers
+-- ---------------------------------------------------------------------------
 
 -- | Decode a little-endian 16-bit unsigned value.
 fromLE16 :: [Word8] -> Int
