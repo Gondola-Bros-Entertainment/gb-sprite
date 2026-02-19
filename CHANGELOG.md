@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.2.1.0
+
+### Performance
+
+Library-wide elimination of O(n²) per-pixel `setPixel`/`VS.//` mutation. All pixel-producing functions now use single-pass `VS.generate` for O(n) performance.
+
+- **NineSlice**: `renderNineSlice` — rewritten for large target sizes that previously stalled.
+- **Transform**: `flipH`, `flipV`, `rotate90`, `rotate180`, `rotate270`, `scaleNearest`, `outline`, `dropShadow` — all rewritten with direct index computation.
+- **Compose**: `stamp`, `stampAlpha` — single-pass with inline source/destination byte reads.
+- **Gradient**: `linearGradient`, `radialGradient`, `diagonalGradient` — generate directly from coordinate math.
+- **Noise**: `valueNoiseColor`, `fbm` — generate noise samples directly into output vector.
+- **Dither**: `orderedDither` — single-pass palette reduction.
+
 ## 0.2.0.0
 
 ### New Modules

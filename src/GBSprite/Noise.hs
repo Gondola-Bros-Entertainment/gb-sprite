@@ -13,8 +13,9 @@ module GBSprite.Noise
   )
 where
 
+import qualified Data.Vector.Storable as VS
 import Data.Word (Word8)
-import GBSprite.Canvas (Canvas (..), newCanvas, setPixel)
+import GBSprite.Canvas (Canvas (..))
 import GBSprite.Color (Color (..), lerp)
 
 -- | Generate a grayscale value noise canvas.
@@ -37,10 +38,15 @@ valueNoise w h seed scale =
 -- instead of black and white.
 valueNoiseColor :: Int -> Int -> Int -> Double -> Color -> Color -> Canvas
 valueNoiseColor w h seed scale startColor endColor =
-  foldCoords w h (newCanvas w h startColor) $ \canvas x y ->
-    let noiseVal = sampleNoise seed scale x y
-        color = lerp noiseVal startColor endColor
-     in setPixel canvas x y color
+  let pixels = VS.generate (w * h * bytesPerPixel) $ \i ->
+        let pixIdx = i `div` bytesPerPixel
+            channel = i `mod` bytesPerPixel
+            x = pixIdx `mod` w
+            y = pixIdx `div` w
+            noiseVal = sampleNoise seed scale x y
+            Color r g b a = lerp noiseVal startColor endColor
+         in colorChannel channel r g b a
+   in Canvas w h pixels
 
 -- | Generate fractal Brownian motion noise.
 --
@@ -49,14 +55,16 @@ valueNoiseColor w h seed scale startColor endColor =
 -- More octaves produce more detail (2–6 is typical).
 fbm :: Int -> Int -> Int -> Int -> Double -> Canvas
 fbm w h seed octaves scale =
-  foldCoords w h (newCanvas w h black) $ \canvas x y ->
-    let noiseVal = fbmSample seed (max 1 octaves) scale x y
-        gray = clampByte (round (noiseVal * channelMaxF))
-        color = Color gray gray gray maxAlpha
-     in setPixel canvas x y color
-  where
-    black :: Color
-    black = Color 0 0 0 maxAlpha
+  let clampedOctaves = max 1 octaves
+      pixels = VS.generate (w * h * bytesPerPixel) $ \i ->
+        let pixIdx = i `div` bytesPerPixel
+            channel = i `mod` bytesPerPixel
+            x = pixIdx `mod` w
+            y = pixIdx `div` w
+            noiseVal = fbmSample seed clampedOctaves scale x y
+            gray = clampByte (round (noiseVal * channelMaxF))
+         in colorChannel channel gray gray gray maxAlpha
+   in Canvas w h pixels
 
 -- ---------------------------------------------------------------------------
 -- Noise sampling
@@ -114,17 +122,19 @@ lcgHash s =
    in step (step (step s))
 
 -- ---------------------------------------------------------------------------
--- Fold helper
+-- Internal helpers
 -- ---------------------------------------------------------------------------
 
--- | Fold over all pixel coordinates in row-major order.
-foldCoords :: Int -> Int -> Canvas -> (Canvas -> Int -> Int -> Canvas) -> Canvas
-foldCoords w h initial f = go initial 0 0
-  where
-    go canvas x y
-      | y >= h = canvas
-      | x >= w = go canvas 0 (y + 1)
-      | otherwise = go (f canvas x y) (x + 1) y
+-- | Number of bytes per pixel (RGBA).
+bytesPerPixel :: Int
+bytesPerPixel = 4
+
+-- | Extract an RGBA channel by index (0=R, 1=G, 2=B, 3=A).
+colorChannel :: Int -> Word8 -> Word8 -> Word8 -> Word8 -> Word8
+colorChannel 0 r _ _ _ = r
+colorChannel 1 _ g _ _ = g
+colorChannel 2 _ _ b _ = b
+colorChannel _ _ _ _ a = a
 
 -- ---------------------------------------------------------------------------
 -- Constants

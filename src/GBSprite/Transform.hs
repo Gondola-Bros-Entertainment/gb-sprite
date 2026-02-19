@@ -1,6 +1,7 @@
 -- | Canvas transformations: flip, rotate, scale.
 --
 -- All transforms produce new canvases — the originals are unmodified.
+-- Uses single-pass vector generation for O(n) performance.
 module GBSprite.Transform
   ( -- * Flip
     flipH,
@@ -20,7 +21,9 @@ module GBSprite.Transform
   )
 where
 
-import GBSprite.Canvas (Canvas (..), getPixel, newCanvas, setPixel)
+import qualified Data.Vector.Storable as VS
+import Data.Word (Word8)
+import GBSprite.Canvas (Canvas (..), getPixel)
 import GBSprite.Color (Color (..), alphaBlend, transparent)
 
 -- | Flip horizontally (mirror left-right).
@@ -28,40 +31,50 @@ flipH :: Canvas -> Canvas
 flipH canvas =
   let w = cWidth canvas
       h = cHeight canvas
-      blank = newCanvas w h transparent
-   in foldPixels blank w h (\c x y -> setPixel c x y (getPixel canvas (w - 1 - x) y))
+      src = cPixels canvas
+   in Canvas w h $ generatePixels w h $ \x y ->
+        let srcIdx = (y * w + (w - 1 - x)) * bytesPerPixel
+         in \ch -> src `VS.unsafeIndex` (srcIdx + ch)
 
 -- | Flip vertically (mirror top-bottom).
 flipV :: Canvas -> Canvas
 flipV canvas =
   let w = cWidth canvas
       h = cHeight canvas
-      blank = newCanvas w h transparent
-   in foldPixels blank w h (\c x y -> setPixel c x y (getPixel canvas x (h - 1 - y)))
+      src = cPixels canvas
+   in Canvas w h $ generatePixels w h $ \x y ->
+        let srcIdx = ((h - 1 - y) * w + x) * bytesPerPixel
+         in \ch -> src `VS.unsafeIndex` (srcIdx + ch)
 
 -- | Rotate 90 degrees clockwise. Width and height swap.
 rotate90 :: Canvas -> Canvas
 rotate90 canvas =
   let w = cWidth canvas
       h = cHeight canvas
-      blank = newCanvas h w transparent
-   in foldPixels blank h w (\c x y -> setPixel c x y (getPixel canvas y (h - 1 - x)))
+      src = cPixels canvas
+   in Canvas h w $ generatePixels h w $ \x y ->
+        let srcIdx = ((h - 1 - x) * w + y) * bytesPerPixel
+         in \ch -> src `VS.unsafeIndex` (srcIdx + ch)
 
 -- | Rotate 180 degrees.
 rotate180 :: Canvas -> Canvas
 rotate180 canvas =
   let w = cWidth canvas
       h = cHeight canvas
-      blank = newCanvas w h transparent
-   in foldPixels blank w h (\c x y -> setPixel c x y (getPixel canvas (w - 1 - x) (h - 1 - y)))
+      src = cPixels canvas
+   in Canvas w h $ generatePixels w h $ \x y ->
+        let srcIdx = ((h - 1 - y) * w + (w - 1 - x)) * bytesPerPixel
+         in \ch -> src `VS.unsafeIndex` (srcIdx + ch)
 
 -- | Rotate 270 degrees clockwise (= 90 degrees counter-clockwise).
 rotate270 :: Canvas -> Canvas
 rotate270 canvas =
   let w = cWidth canvas
       h = cHeight canvas
-      blank = newCanvas h w transparent
-   in foldPixels blank h w (\c x y -> setPixel c x y (getPixel canvas (w - 1 - y) x))
+      src = cPixels canvas
+   in Canvas h w $ generatePixels h w $ \x y ->
+        let srcIdx = (x * w + (w - 1 - y)) * bytesPerPixel
+         in \ch -> src `VS.unsafeIndex` (srcIdx + ch)
 
 -- | Scale using nearest-neighbor interpolation.
 --
@@ -72,11 +85,12 @@ scaleNearest factor canvas
   | factor <= 1 = canvas
   | otherwise =
       let w = cWidth canvas
-          h = cHeight canvas
           newW = w * factor
-          newH = h * factor
-          blank = newCanvas newW newH transparent
-       in foldPixels blank newW newH (\c x y -> setPixel c x y (getPixel canvas (x `div` factor) (y `div` factor)))
+          newH = cHeight canvas * factor
+          src = cPixels canvas
+       in Canvas newW newH $ generatePixels newW newH $ \x y ->
+            let srcIdx = ((y `div` factor) * w + (x `div` factor)) * bytesPerPixel
+             in \ch -> src `VS.unsafeIndex` (srcIdx + ch)
 
 -- | Add an outline around non-transparent pixels.
 --
@@ -86,28 +100,29 @@ outline :: Color -> Canvas -> Canvas
 outline outlineColor canvas =
   let w = cWidth canvas
       h = cHeight canvas
-   in foldPixels canvas w h (addOutline w h)
+      Color oR oG oB oA = outlineColor
+      pixels = VS.generate (w * h * bytesPerPixel) $ \i ->
+        let pixIdx = i `div` bytesPerPixel
+            channel = i `mod` bytesPerPixel
+            x = pixIdx `mod` w
+            y = pixIdx `div` w
+            pixel = getPixel canvas x y
+         in if colorA pixel == 0 && hasOpaqueNeighbor w h x y
+              then colorChannel channel oR oG oB oA
+              else
+                let srcIdx = pixIdx * bytesPerPixel + channel
+                 in cPixels canvas `VS.unsafeIndex` srcIdx
+   in Canvas w h pixels
   where
-    addOutline w h c x y
-      | isTransparent (getPixel canvas x y) && hasOpaqueNeighbor w h x y =
-          setPixel c x y outlineColor
-      | otherwise = c
-
     hasOpaqueNeighbor w h x y =
-      not (all isTransparent neighbors)
+      checkNeighbor (x - 1) y
+        || checkNeighbor (x + 1) y
+        || checkNeighbor x (y - 1)
+        || checkNeighbor x (y + 1)
       where
-        neighbors =
-          [ getPixel canvas nx ny
-          | (dx, dy) <- [(-1, 0), (1, 0), (0, -1), (0, 1)],
-            let nx = x + dx
-                ny = y + dy,
-            nx >= 0,
-            nx < w,
-            ny >= 0,
-            ny < h
-          ]
-
-    isTransparent (Color _ _ _ a) = a == 0
+        checkNeighbor nx ny
+          | nx >= 0 && nx < w && ny >= 0 && ny < h = colorA (getPixel canvas nx ny) > 0
+          | otherwise = False
 
 -- | Add a drop shadow offset by @(dx, dy)@.
 --
@@ -119,42 +134,67 @@ dropShadow dx dy shadowColor canvas =
       h = cHeight canvas
       padW = w + abs dx
       padH = h + abs dy
-      blank = newCanvas padW padH transparent
-      -- Draw shadow first (behind)
       shadowOffX = max 0 dx
       shadowOffY = max 0 dy
-      withShadow = foldPixels blank w h (drawShadowPixel shadowOffX shadowOffY)
-      -- Draw original on top
       origOffX = max 0 (negate dx)
       origOffY = max 0 (negate dy)
-   in foldPixels withShadow w h (drawOrigPixel origOffX origOffY)
-  where
-    drawShadowPixel offX offY c x y =
-      let pixel = getPixel canvas x y
-       in if colorA pixel > 0
-            then setPixel c (x + offX) (y + offY) shadowColor
-            else c
-
-    drawOrigPixel offX offY c x y =
-      let pixel = getPixel canvas x y
-       in if colorA pixel > 0
-            then
-              let existing = getPixel c (x + offX) (y + offY)
-                  blended = alphaBlend pixel existing
-               in setPixel c (x + offX) (y + offY) blended
-            else c
+      Color sR sG sB sA = shadowColor
+      pixels = VS.generate (padW * padH * bytesPerPixel) $ \i ->
+        let pixIdx = i `div` bytesPerPixel
+            channel = i `mod` bytesPerPixel
+            px = pixIdx `mod` padW
+            py = pixIdx `div` padW
+            -- Original sprite coordinates
+            ox = px - origOffX
+            oy = py - origOffY
+            origPixel =
+              if ox >= 0 && ox < w && oy >= 0 && oy < h
+                then getPixel canvas ox oy
+                else transparent
+            -- Shadow sprite coordinates
+            sx = px - shadowOffX
+            sy = py - shadowOffY
+            hasShadow =
+              sx >= 0
+                && sx < w
+                && sy >= 0
+                && sy < h
+                && colorA (getPixel canvas sx sy) > 0
+         in if colorA origPixel > 0
+              then
+                -- Original on top, blend over shadow if present
+                if hasShadow
+                  then
+                    let Color bR bG bB bA = alphaBlend origPixel shadowColor
+                     in colorChannel channel bR bG bB bA
+                  else colorChannel channel (colorR origPixel) (colorG origPixel) (colorB origPixel) (colorA origPixel)
+              else
+                if hasShadow
+                  then colorChannel channel sR sG sB sA
+                  else 0
+   in Canvas padW padH pixels
 
 -- ---------------------------------------------------------------------------
 -- Internal helpers
 -- ---------------------------------------------------------------------------
 
--- | Fold over all pixels in a width x height grid.
-foldPixels :: Canvas -> Int -> Int -> (Canvas -> Int -> Int -> Canvas) -> Canvas
-foldPixels canvas w h f = foldlRows canvas 0
-  where
-    foldlRows c y
-      | y >= h = c
-      | otherwise = foldlRows (foldlCols c 0 y) (y + 1)
-    foldlCols c x y
-      | x >= w = c
-      | otherwise = foldlCols (f c x y) (x + 1) y
+-- | Number of bytes per pixel (RGBA).
+bytesPerPixel :: Int
+bytesPerPixel = 4
+
+-- | Generate a pixel vector from a coordinate-to-channel function.
+-- The function receives (x, y) and returns a channel reader (channelIdx -> byte).
+generatePixels :: Int -> Int -> (Int -> Int -> Int -> Word8) -> VS.Vector Word8
+generatePixels w h pixelFn = VS.generate (w * h * bytesPerPixel) $ \i ->
+  let pixIdx = i `div` bytesPerPixel
+      channel = i `mod` bytesPerPixel
+      x = pixIdx `mod` w
+      y = pixIdx `div` w
+   in pixelFn x y channel
+
+-- | Extract an RGBA channel by index (0=R, 1=G, 2=B, 3=A).
+colorChannel :: Int -> Word8 -> Word8 -> Word8 -> Word8 -> Word8
+colorChannel 0 r _ _ _ = r
+colorChannel 1 _ g _ _ = g
+colorChannel 2 _ _ b _ = b
+colorChannel _ _ _ _ a = a

@@ -10,8 +10,10 @@ module GBSprite.Gradient
   )
 where
 
-import GBSprite.Canvas (Canvas, newCanvas, setPixel)
-import GBSprite.Color (Color, lerp)
+import qualified Data.Vector.Storable as VS
+import Data.Word (Word8)
+import GBSprite.Canvas (Canvas (..))
+import GBSprite.Color (Color (..), lerp)
 
 -- | Generate a linear gradient canvas.
 --
@@ -21,13 +23,18 @@ import GBSprite.Color (Color, lerp)
 -- otherwise top to bottom.
 linearGradient :: Int -> Int -> Color -> Color -> Bool -> Canvas
 linearGradient w h startColor endColor horizontal =
-  foldCoords w h (newCanvas w h startColor) $ \canvas x y ->
-    let t
-          | horizontal = if w <= 1 then 0.0 else fromIntegral x / fromIntegral (w - 1)
-          | h <= 1 = 0.0
-          | otherwise = fromIntegral y / fromIntegral (h - 1)
-        color = lerp t startColor endColor
-     in setPixel canvas x y color
+  let pixels = VS.generate (w * h * bytesPerPixel) $ \i ->
+        let pixIdx = i `div` bytesPerPixel
+            channel = i `mod` bytesPerPixel
+            x = pixIdx `mod` w
+            y = pixIdx `div` w
+            t
+              | horizontal = if w <= 1 then 0.0 else fromIntegral x / fromIntegral (w - 1)
+              | h <= 1 = 0.0
+              | otherwise = fromIntegral y / fromIntegral (h - 1)
+            Color r g b a = lerp t startColor endColor
+         in colorChannel channel r g b a
+   in Canvas w h pixels
 
 -- | Generate a radial gradient canvas.
 --
@@ -36,14 +43,19 @@ linearGradient w h startColor endColor horizontal =
 -- Pixels beyond @radius@ are filled with @outerColor@.
 radialGradient :: Int -> Int -> Int -> Int -> Int -> Color -> Color -> Canvas
 radialGradient w h cx cy radius innerColor outerColor =
-  foldCoords w h (newCanvas w h outerColor) $ \canvas x y ->
-    let dx = fromIntegral (x - cx) :: Double
-        dy = fromIntegral (y - cy) :: Double
-        dist = sqrt (dx * dx + dy * dy)
-        radiusF = fromIntegral (max 1 radius) :: Double
-        t = min 1.0 (dist / radiusF)
-        color = lerp t innerColor outerColor
-     in setPixel canvas x y color
+  let radiusF = fromIntegral (max 1 radius) :: Double
+      pixels = VS.generate (w * h * bytesPerPixel) $ \i ->
+        let pixIdx = i `div` bytesPerPixel
+            channel = i `mod` bytesPerPixel
+            x = pixIdx `mod` w
+            y = pixIdx `div` w
+            dx = fromIntegral (x - cx) :: Double
+            dy = fromIntegral (y - cy) :: Double
+            dist = sqrt (dx * dx + dy * dy)
+            t = min 1.0 (dist / radiusF)
+            Color r g b a = lerp t innerColor outerColor
+         in colorChannel channel r g b a
+   in Canvas w h pixels
 
 -- | Generate a diagonal gradient canvas.
 --
@@ -52,22 +64,25 @@ radialGradient w h cx cy radius innerColor outerColor =
 -- at the bottom-right.
 diagonalGradient :: Int -> Int -> Color -> Color -> Canvas
 diagonalGradient w h startColor endColor =
-  foldCoords w h (newCanvas w h startColor) $ \canvas x y ->
-    let maxDist = fromIntegral (max 1 (w - 1 + h - 1)) :: Double
-        dist = fromIntegral (x + y) :: Double
-        t = dist / maxDist
-        color = lerp t startColor endColor
-     in setPixel canvas x y color
+  let maxDist = fromIntegral (max 1 (w - 1 + h - 1)) :: Double
+      pixels = VS.generate (w * h * bytesPerPixel) $ \i ->
+        let pixIdx = i `div` bytesPerPixel
+            channel = i `mod` bytesPerPixel
+            x = pixIdx `mod` w
+            y = pixIdx `div` w
+            dist = fromIntegral (x + y) :: Double
+            t = dist / maxDist
+            Color r g b a = lerp t startColor endColor
+         in colorChannel channel r g b a
+   in Canvas w h pixels
 
--- ---------------------------------------------------------------------------
--- Fold helper
--- ---------------------------------------------------------------------------
+-- | Number of bytes per pixel (RGBA).
+bytesPerPixel :: Int
+bytesPerPixel = 4
 
--- | Fold over all pixel coordinates in row-major order.
-foldCoords :: Int -> Int -> Canvas -> (Canvas -> Int -> Int -> Canvas) -> Canvas
-foldCoords w h initial f = go initial 0 0
-  where
-    go canvas x y
-      | y >= h = canvas
-      | x >= w = go canvas 0 (y + 1)
-      | otherwise = go (f canvas x y) (x + 1) y
+-- | Extract an RGBA channel by index (0=R, 1=G, 2=B, 3=A).
+colorChannel :: Int -> Word8 -> Word8 -> Word8 -> Word8 -> Word8
+colorChannel 0 r _ _ _ = r
+colorChannel 1 _ g _ _ = g
+colorChannel 2 _ _ b _ = b
+colorChannel _ _ _ _ a = a

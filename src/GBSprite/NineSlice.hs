@@ -16,8 +16,8 @@ module GBSprite.NineSlice
   )
 where
 
-import GBSprite.Canvas (Canvas (..), getPixel, newCanvas, setPixel)
-import GBSprite.Color (transparent)
+import qualified Data.Vector.Storable as VS
+import GBSprite.Canvas (Canvas (..))
 
 -- | A nine-slice definition: source canvas plus border insets.
 data NineSlice = NineSlice
@@ -53,11 +53,13 @@ nineSlice canvas left right top bottom =
 --
 -- @renderNineSlice ns targetWidth targetHeight@ produces a new canvas
 -- of the given dimensions with the nine-slice regions properly
--- stretched.
+-- stretched. Uses single-pass vector generation (O(n)) rather than
+-- per-pixel mutation.
 renderNineSlice :: NineSlice -> Int -> Int -> Canvas
 renderNineSlice ns targetW targetH =
   let srcW = cWidth (nsCanvas ns)
       srcH = cHeight (nsCanvas ns)
+      src = cPixels (nsCanvas ns)
       left = min (nsLeft ns) (srcW `div` 2)
       right = min (nsRight ns) (srcW `div` 2)
       top = min (nsTop ns) (srcH `div` 2)
@@ -66,12 +68,18 @@ renderNineSlice ns targetW targetH =
       centerSrcH = max 1 (srcH - top - bottom)
       centerDstW = max 0 (targetW - left - right)
       centerDstH = max 0 (targetH - top - bottom)
-   in foldCoords targetW targetH (newCanvas targetW targetH transparent) $
-        \canvas x y ->
-          let srcX = mapCoord x left right centerSrcW centerDstW srcW targetW
-              srcY = mapCoord y top bottom centerSrcH centerDstH srcH targetH
-              color = getPixel (nsCanvas ns) srcX srcY
-           in setPixel canvas x y color
+      pixels = VS.generate (targetW * targetH * bytesPerPixel) $ \i ->
+        let pixIdx = i `div` bytesPerPixel
+            channel = i `mod` bytesPerPixel
+            x = pixIdx `mod` targetW
+            y = pixIdx `div` targetW
+            srcX = mapCoord x left right centerSrcW centerDstW srcW targetW
+            srcY = mapCoord y top bottom centerSrcH centerDstH srcH targetH
+            srcIdx = (srcY * srcW + srcX) * bytesPerPixel + channel
+         in if srcX >= 0 && srcX < srcW && srcY >= 0 && srcY < srcH
+              then src `VS.unsafeIndex` srcIdx
+              else 0
+   in Canvas targetW targetH pixels
 
 -- | Map a destination coordinate to its source coordinate.
 --
@@ -88,15 +96,6 @@ mapCoord dst border1 border2 centerSrc centerDst srcSize dstSize
           mapped = localDst * centerSrc `div` centerDst
        in border1 + min (centerSrc - 1) mapped
 
--- ---------------------------------------------------------------------------
--- Fold helper
--- ---------------------------------------------------------------------------
-
--- | Fold over all pixel coordinates in row-major order.
-foldCoords :: Int -> Int -> Canvas -> (Canvas -> Int -> Int -> Canvas) -> Canvas
-foldCoords w h initial f = go initial 0 0
-  where
-    go canvas x y
-      | y >= h = canvas
-      | x >= w = go canvas 0 (y + 1)
-      | otherwise = go (f canvas x y) (x + 1) y
+-- | Number of bytes per pixel (RGBA).
+bytesPerPixel :: Int
+bytesPerPixel = 4

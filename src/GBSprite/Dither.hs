@@ -13,8 +13,9 @@ module GBSprite.Dither
 where
 
 import Data.List (foldl')
+import qualified Data.Vector.Storable as VS
 import Data.Word (Word8)
-import GBSprite.Canvas (Canvas (..), getPixel, newCanvas, setPixel)
+import GBSprite.Canvas (Canvas (..), getPixel)
 import GBSprite.Color (Color (..))
 import GBSprite.Palette (Palette (..))
 
@@ -36,15 +37,19 @@ data DitherMatrix
 orderedDither :: DitherMatrix -> Palette -> Canvas -> Canvas
 orderedDither _ (Palette []) canvas = canvas
 orderedDither matrix palette canvas =
-  foldCoords w h (newCanvas w h (Color 0 0 0 maxAlpha)) $ \result x y ->
-    let pixel = getPixel canvas x y
-        threshold = bayerThreshold matrix x y
-        adjusted = adjustColor threshold pixel
-        closest = findClosest palette adjusted
-     in setPixel result x y closest
-  where
-    w = cWidth canvas
-    h = cHeight canvas
+  let w = cWidth canvas
+      h = cHeight canvas
+      pixels = VS.generate (w * h * bytesPerPixel) $ \i ->
+        let pixIdx = i `div` bytesPerPixel
+            channel = i `mod` bytesPerPixel
+            x = pixIdx `mod` w
+            y = pixIdx `div` w
+            pixel = getPixel canvas x y
+            threshold = bayerThreshold matrix x y
+            adjusted = adjustColor threshold pixel
+            Color r g b a = findClosest palette adjusted
+         in colorChannel channel r g b a
+   in Canvas w h pixels
 
 -- | Get the Bayer threshold at a pixel position, normalized to [-0.5, 0.5].
 bayerThreshold :: DitherMatrix -> Int -> Int -> Double
@@ -207,27 +212,25 @@ bayer8 =
     21
   ]
 
+-- ---------------------------------------------------------------------------
+-- Internal helpers
+-- ---------------------------------------------------------------------------
+
+-- | Number of bytes per pixel (RGBA).
+bytesPerPixel :: Int
+bytesPerPixel = 4
+
+-- | Extract an RGBA channel by index (0=R, 1=G, 2=B, 3=A).
+colorChannel :: Int -> Word8 -> Word8 -> Word8 -> Word8 -> Word8
+colorChannel 0 r _ _ _ = r
+colorChannel 1 _ g _ _ = g
+colorChannel 2 _ _ b _ = b
+colorChannel _ _ _ _ a = a
+
 -- | Dither strength (how much the threshold affects the color).
 ditherStrength :: Double
 ditherStrength = 64.0
 
--- | Maximum alpha value.
-maxAlpha :: Word8
-maxAlpha = 255
-
 -- | Clamp an integer to valid byte range.
 clampByte :: Int -> Word8
 clampByte n = fromIntegral (max 0 (min 255 n))
-
--- ---------------------------------------------------------------------------
--- Fold helper
--- ---------------------------------------------------------------------------
-
--- | Fold over all pixel coordinates in row-major order.
-foldCoords :: Int -> Int -> Canvas -> (Canvas -> Int -> Int -> Canvas) -> Canvas
-foldCoords w h initial f = go initial 0 0
-  where
-    go canvas x y
-      | y >= h = canvas
-      | x >= w = go canvas 0 (y + 1)
-      | otherwise = go (f canvas x y) (x + 1) y
