@@ -1,12 +1,13 @@
 <div align="center">
 <h1>gb-sprite</h1>
-<p><strong>Procedural 2D Sprite & VFX Generation for GB Games</strong></p>
+<p><strong>Procedural 2D Sprite & VFX Generation</strong></p>
 <p>Pure Haskell — no image files, no textures, no asset pipeline. Just math.</p>
 <p><a href="#overview">Overview</a> · <a href="#architecture">Architecture</a> · <a href="#usage">Usage</a> · <a href="#api">API</a> · <a href="#example">Example</a></p>
 <p>
 
+[![CI](https://github.com/Gondola-Bros-Entertainment/gb-sprite/actions/workflows/ci.yml/badge.svg)](https://github.com/Gondola-Bros-Entertainment/gb-sprite/actions/workflows/ci.yml)
+[![Hackage](https://img.shields.io/hackage/v/gb-sprite.svg)](https://hackage.haskell.org/package/gb-sprite)
 ![Haskell](https://img.shields.io/badge/haskell-GHC%209.6-purple)
-![License](https://img.shields.io/badge/license-MIT-blue)
 
 </p>
 </div>
