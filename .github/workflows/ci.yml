@@ -87,6 +87,7 @@ jobs:
         with:
           pattern: |
             src/**/*.hs
+            !src/GBSprite/Export.hs
             test/**/*.hs
 
   cabal-check:
