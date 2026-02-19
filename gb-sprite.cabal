@@ -12,8 +12,8 @@ description:
 
 license:       MIT
 license-file:  LICENSE
-author:        Gondola Bros Entertainment
-maintainer:    gondola.bros.entertainment@gmail.com
+author:        Devon Tomlin
+maintainer:    devon.tomlin@novavero.ai
 category:      Graphics
 build-type:    Simple
 tested-with:   GHC ==9.6.7
