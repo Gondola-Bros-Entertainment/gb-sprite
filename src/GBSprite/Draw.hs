@@ -39,8 +39,8 @@ drawPolygon :: Canvas -> [(Int, Int)] -> Color -> Canvas
 drawPolygon canvas vertices color = case vertices of
   [] -> canvas
   [_] -> canvas
-  _ ->
-    let edges = zip vertices (tail vertices ++ take 1 vertices)
+  (v : vs) ->
+    let edges = zip vertices (vs ++ [v])
      in foldl (\c ((ax, ay), (bx, by)) -> drawLine c ax ay bx by color) canvas edges
 
 -- | Fill a polygon using scanline rasterization.
@@ -48,11 +48,11 @@ fillPolygon :: Canvas -> [(Int, Int)] -> Color -> Canvas
 fillPolygon canvas vertices color = case vertices of
   [] -> canvas
   [_] -> canvas
-  _ ->
+  (v : vs) ->
     let ys = map snd vertices
         minY = max 0 (minimum ys)
         maxY = min (cHeight canvas - 1) (maximum ys)
-        edges = zip vertices (tail vertices ++ take 1 vertices)
+        edges = zip vertices (vs ++ [v])
      in foldl (fillScanline edges) canvas [minY .. maxY]
   where
     fillScanline edges c scanY =
@@ -121,7 +121,9 @@ drawArc canvas cx cy rx ry startDeg endDeg color =
           )
         | i <- [0 .. steps]
         ]
-      edges = zip points (tail points)
+      edges = case points of
+        [] -> []
+        (_ : ps) -> zip points ps
    in foldl (\c ((ax, ay), (bx, by)) -> drawLine c ax ay bx by color) canvas edges
   where
     degToRad :: Double
@@ -144,7 +146,9 @@ drawBezier canvas (x0, y0) (ctrlX, ctrlY) (x1, y1) color =
            in (px :: Int, py :: Int)
         | i <- [0 .. bezierSteps]
         ]
-      edges = zip points (tail points)
+      edges = case points of
+        [] -> []
+        (_ : ps) -> zip points ps
    in foldl (\c ((ax, ay), (bx, by)) -> drawLine c ax ay bx by color) canvas edges
   where
     bezierSteps :: Int

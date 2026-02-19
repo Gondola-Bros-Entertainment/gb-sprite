@@ -36,10 +36,15 @@ fromColors = Palette
 -- or transparent for empty palettes.
 paletteColor :: Palette -> Int -> Color
 paletteColor (Palette []) _ = Color 0 0 0 0
-paletteColor (Palette colors) idx
-  | idx < 0 = head colors
-  | idx >= length colors = last colors
-  | otherwise = colors !! idx
+paletteColor (Palette colors@(first : _)) idx
+  | idx < 0 = first
+  | otherwise = go 0 colors
+  where
+    go _ [c] = c
+    go i (c : cs)
+      | i == idx = c
+      | otherwise = go (i + 1) cs
+    go _ [] = first
 
 -- | Swap colors: replace every occurrence of a source palette color
 -- with the corresponding destination palette color.

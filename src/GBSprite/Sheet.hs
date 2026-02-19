@@ -57,7 +57,9 @@ packSheet padding items =
       let (_, src) = findByName (entryName entry) items
        in stamp canvas (entryX entry) (entryY entry) src
 
-    findByName name = head . filter (\(n, _) -> n == name)
+    findByName name xs = case filter (\(n, _) -> n == name) xs of
+      (match : _) -> match
+      [] -> ("", newCanvas 1 1 transparent)
 
 -- | Shelf-pack algorithm: returns entries + total dimensions.
 shelfPack :: Int -> [(String, Canvas)] -> ([SheetEntry], Int, Int)

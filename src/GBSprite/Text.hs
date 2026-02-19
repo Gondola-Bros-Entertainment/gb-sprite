@@ -110,9 +110,9 @@ lookupGlyph :: Char -> [Word8]
 lookupGlyph ch
   | ch >= ' ' && ch <= '~' =
       let idx = fromEnum ch - fromEnum ' '
-       in if idx < length glyphData
-            then glyphData !! idx
-            else unknownGlyph
+       in case drop idx glyphData of
+            (glyph : _) -> glyph
+            [] -> unknownGlyph
   | otherwise = unknownGlyph
 
 -- | Filled rectangle for unknown characters.

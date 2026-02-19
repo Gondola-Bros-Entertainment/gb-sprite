@@ -45,12 +45,13 @@ renderTilemap sheet config =
    in foldl (drawTile atlas entries tw th gw) blank (zip [0 ..] (tmTiles config))
   where
     drawTile atlas entries tw th gw canvas (gridIdx, tileIdx)
-      | tileIdx < 0 || tileIdx >= length entries = canvas
-      | otherwise =
-          let entry = entries !! tileIdx
-              gridX = (gridIdx `mod` gw) * tw
-              gridY = (gridIdx `div` gw) * th
-           in stampTile canvas atlas entry gridX gridY tw th
+      | tileIdx < 0 = canvas
+      | otherwise = case drop tileIdx entries of
+          (entry : _) ->
+            let gridX = (gridIdx `mod` gw) * tw
+                gridY = (gridIdx `div` gw) * th
+             in stampTile canvas atlas entry gridX gridY tw th
+          [] -> canvas
 
     stampTile canvas atlas entry destX destY tw th =
       foldlCoords

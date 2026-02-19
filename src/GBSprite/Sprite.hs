@@ -84,4 +84,10 @@ frameCount = length . spriteFrames
 getFrame :: Sprite -> Int -> Maybe Canvas
 getFrame s idx
   | idx < 0 || idx >= frameCount s = Nothing
-  | otherwise = Just (spriteFrames s !! idx)
+  | otherwise = safeIndex idx (spriteFrames s)
+
+-- | Safe list indexing without '!!'.
+safeIndex :: Int -> [a] -> Maybe a
+safeIndex _ [] = Nothing
+safeIndex 0 (x : _) = Just x
+safeIndex i (_ : xs) = safeIndex (i - 1) xs

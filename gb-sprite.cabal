@@ -17,6 +17,7 @@ maintainer:    gondola.bros.entertainment@gmail.com
 category:      Graphics
 build-type:    Simple
 tested-with:   GHC ==9.6.7
+extra-doc-files: README.md
 homepage:      https://github.com/Gondola-Bros-Entertainment/gb-sprite
 bug-reports:   https://github.com/Gondola-Bros-Entertainment/gb-sprite/issues
 
