@@ -4,6 +4,10 @@ on:
   push:
     tags: ['v*']
 
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   ci:
     name: CI
