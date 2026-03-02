@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.2.1.2
+
+### License
+
+- Change license from MIT to BSD-3-Clause to match Haskell ecosystem convention.
+
+### Bug Fixes
+
+- Fix `maximum` crash on empty list in `packSheet` (Sheet.hs).
+- Replace partial `!!` with safe indexing in Bayer dithering (Dither.hs).
+- Fix `-Wname-shadowing` warning in test suite.
+
+### Documentation
+
+- Fix README Animation API section (wrong type name and signatures).
+- Add gb-vector as ecosystem companion in README.
+
+### Internal
+
+- CI: cross-platform build matrix (Linux, macOS, Windows).
+
 ## 0.2.1.1
 
 - Remove unused `containers` dependency.
