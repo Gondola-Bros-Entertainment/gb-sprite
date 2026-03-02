@@ -11,65 +11,11 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+# ---------------------------------------------------------------------------
+# Lint jobs (fast, Linux-only)
+# ---------------------------------------------------------------------------
+
 jobs:
-  build:
-    name: Build
-    needs: [lint, format]
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: haskell-actions/setup@v2
-        with:
-          ghc-version: '9.6.7'
-          cabal-version: '3.14'
-      - uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cabal/store
-            dist-newstyle
-          key: ${{ runner.os }}-ghc-9.6.7-${{ hashFiles('gb-sprite.cabal') }}
-          restore-keys: ${{ runner.os }}-ghc-9.6.7-
-      - run: cabal build --only-dependencies
-      - run: cabal build
-
-  test:
-    name: Test
-    needs: build
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: haskell-actions/setup@v2
-        with:
-          ghc-version: '9.6.7'
-          cabal-version: '3.14'
-      - uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cabal/store
-            dist-newstyle
-          key: ${{ runner.os }}-ghc-9.6.7-${{ hashFiles('gb-sprite.cabal') }}
-          restore-keys: ${{ runner.os }}-ghc-9.6.7-
-      - run: cabal test --enable-tests
-
-  warnings:
-    name: Warnings
-    needs: build
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: haskell-actions/setup@v2
-        with:
-          ghc-version: '9.6.7'
-          cabal-version: '3.14'
-      - uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cabal/store
-            dist-newstyle
-          key: ${{ runner.os }}-ghc-9.6.7-${{ hashFiles('gb-sprite.cabal') }}
-          restore-keys: ${{ runner.os }}-ghc-9.6.7-
-      - run: cabal build --ghc-options="-Wall -Werror"
-
   lint:
     name: HLint
     runs-on: ubuntu-latest
@@ -94,14 +40,57 @@ jobs:
             src/**/*.hs
             test/**/*.hs
 
+  # ---------------------------------------------------------------------------
+  # Build + Test (cross-platform matrix)
+  # ---------------------------------------------------------------------------
+
+  build:
+    name: Build (${{ matrix.name }})
+    needs: [lint, format, cabal-check]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            name: Linux
+          - os: macos-latest
+            name: macOS
+          - os: windows-latest
+            name: Windows
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: haskell-actions/setup@v2
+        with:
+          ghc-version: '9.6'
+          cabal-version: 'latest'
+
+      - name: Cache Cabal store
+        uses: actions/cache@v4
+        with:
+          path: ~/.cabal/store
+          key: cabal-${{ runner.os }}-${{ hashFiles('gb-sprite.cabal') }}
+          restore-keys: cabal-${{ runner.os }}-
+
+      - name: Build
+        run: cabal build --ghc-options="-Werror"
+
+      - name: Test
+        run: cabal test
+
+  # ---------------------------------------------------------------------------
+  # Packaging check (Linux-only)
+  # ---------------------------------------------------------------------------
+
   cabal-check:
     name: Cabal Check
-    needs: build
+    needs: [lint, format]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: haskell-actions/setup@v2
         with:
-          ghc-version: '9.6.7'
-          cabal-version: '3.14'
+          ghc-version: '9.6'
+          cabal-version: 'latest'
       - run: cabal check

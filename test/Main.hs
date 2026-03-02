@@ -23,7 +23,7 @@ import GBSprite.Text (defaultFont, renderText, textWidth)
 import GBSprite.Transform (flipH, flipV, rotate180, rotate270, rotate90, scaleNearest)
 import GBSprite.VFX (ExplosionConfig (..), RingConfig (..), explosionFrames, flashFrames, ringExpandFrames)
 import System.Exit (exitFailure, exitSuccess)
-import System.IO (hFlush, stdout)
+import System.IO (hClose, hFlush, openTempFile, stdout)
 
 -- ---------------------------------------------------------------------------
 -- Test harness
@@ -449,7 +449,8 @@ testVFX =
 testBmpRoundtrip :: IO [(String, TestResult)]
 testBmpRoundtrip = do
   let canvas = fillRect (newCanvas 4 4 transparent) 0 0 4 4 red
-      path = "/tmp/gb-sprite-test.bmp"
+  (path, h) <- openTempFile "." "gb-sprite-test.bmp"
+  hClose h
   writeBmp path canvas
   raw <- BS.readFile path
   let bytes = BS.unpack raw
