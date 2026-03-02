@@ -18,7 +18,7 @@
 
 gb-sprite is a pure Haskell library for procedurally generating 2D sprites, animations, and visual effects. Define pixel art, VFX, and sprite sheets programmatically — render to BMP with zero external image dependencies.
 
-Companion to [gb-synth](https://github.com/Gondola-Bros-Entertainment/gb-synth) (procedural audio).
+Companion to [gb-synth](https://github.com/Gondola-Bros-Entertainment/gb-synth) (procedural audio) and [gb-vector](https://github.com/Gondola-Bros-Entertainment/gb-vector) (SVG generation).
 
 **Features:**
 - Vector-backed RGBA canvas with drawing primitives (lines, circles, polygons, Bezier curves)
@@ -244,10 +244,16 @@ sparksFrames     :: SparksConfig -> [Canvas]       -- directional spark burst
 ### Animation
 
 ```haskell
-data PlayMode = Loop | Once | PingPong
+data LoopMode = Loop | Once | PingPong
 
-animationFrame :: PlayMode -> Int -> Int -> Int  -- mode, total frames, tick → frame index
-animationDone  :: PlayMode -> Int -> Int -> Bool -- mode, total frames, tick → finished?
+data Animation = Animation
+  { animFrameDelay :: !Int, animFrameCount :: !Int, animLoopMode :: !LoopMode }
+
+loopAnimation     :: Int -> Int -> Animation           -- delay, frame count
+onceAnimation     :: Int -> Int -> Animation
+pingPongAnimation :: Int -> Int -> Animation
+animationFrame    :: Animation -> Int -> Int            -- animation, tick → frame index
+animationDone     :: Animation -> Int -> Bool           -- animation, tick → finished?
 ```
 
 ### BMP / Export

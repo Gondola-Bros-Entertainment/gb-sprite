@@ -92,7 +92,9 @@ shelfPack padding items = go items 0 0 0 0 []
 
 -- | Compute a reasonable atlas width based on total area.
 computeMaxWidth :: Int -> [(String, Canvas)] -> Int
+computeMaxWidth _padding [] = 1
 computeMaxWidth _padding items =
   let totalArea = sum [cWidth c * cHeight c | (_, c) <- items]
       side = ceiling (sqrt (fromIntegral totalArea :: Double)) :: Int
-   in max side (maximum (map (cWidth . snd) items))
+      widest = maximum (map (cWidth . snd) items)
+   in max side widest

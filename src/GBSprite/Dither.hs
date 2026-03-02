@@ -55,15 +55,15 @@ orderedDither matrix palette canvas =
 bayerThreshold :: DitherMatrix -> Int -> Int -> Double
 bayerThreshold Bayer2 x y =
   let idx = (y `mod` bayer2Size) * bayer2Size + (x `mod` bayer2Size)
-      val = bayer2 !! idx
+      val = safeIndex idx bayer2
    in (fromIntegral val + 0.5) / fromIntegral (bayer2Size * bayer2Size) - 0.5
 bayerThreshold Bayer4 x y =
   let idx = (y `mod` bayer4Size) * bayer4Size + (x `mod` bayer4Size)
-      val = bayer4 !! idx
+      val = safeIndex idx bayer4
    in (fromIntegral val + 0.5) / fromIntegral (bayer4Size * bayer4Size) - 0.5
 bayerThreshold Bayer8 x y =
   let idx = (y `mod` bayer8Size) * bayer8Size + (x `mod` bayer8Size)
-      val = bayer8 !! idx
+      val = safeIndex idx bayer8
    in (fromIntegral val + 0.5) / fromIntegral (bayer8Size * bayer8Size) - 0.5
 
 -- | Adjust a pixel color by the dither threshold.
@@ -230,6 +230,12 @@ colorChannel _ _ _ _ a = a
 -- | Dither strength (how much the threshold affects the color).
 ditherStrength :: Double
 ditherStrength = 64.0
+
+-- | Safe list indexing without '!!'.
+safeIndex :: Int -> [Int] -> Int
+safeIndex _ [] = 0
+safeIndex 0 (x : _) = x
+safeIndex i (_ : xs) = safeIndex (i - 1) xs
 
 -- | Clamp an integer to valid byte range.
 clampByte :: Int -> Word8
