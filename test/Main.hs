@@ -449,8 +449,8 @@ testVFX =
 testBmpRoundtrip :: IO [(String, TestResult)]
 testBmpRoundtrip = do
   let canvas = fillRect (newCanvas 4 4 transparent) 0 0 4 4 red
-  (path, h) <- openTempFile "." "gb-sprite-test.bmp"
-  hClose h
+  (path, tmpHandle) <- openTempFile "." "gb-sprite-test.bmp"
+  hClose tmpHandle
   writeBmp path canvas
   raw <- BS.readFile path
   let bytes = BS.unpack raw
@@ -472,8 +472,8 @@ testBmpRoundtrip = do
          in assertEqual "width" 4 w
       ),
       ( "BMP height is 4",
-        let h = fromLE32 (take 4 (drop 22 bytes))
-         in assertEqual "height" 4 h
+        let height = fromLE32 (take 4 (drop 22 bytes))
+         in assertEqual "height" 4 height
       ),
       ( "BMP bits per pixel is 32",
         let bpp = fromLE16 (take 2 (drop 28 bytes))
