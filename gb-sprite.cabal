@@ -10,7 +10,7 @@ description:
   sheets, render bitmap text, and create procedural VFX. Export
   to BMP natively, or enable the @juicy-pixels@ flag for PNG.
 
-license:       MIT
+license:       BSD-3-Clause
 license-file:  LICENSE
 author:        Devon Tomlin
 maintainer:    devon.tomlin@novavero.ai

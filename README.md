@@ -326,5 +326,5 @@ cabal haddock                            # Generate docs
 ---
 
 <p align="center">
-  <sub>MIT License · <a href="https://github.com/Gondola-Bros-Entertainment">Gondola Bros Entertainment</a></sub>
+  <sub>BSD-3-Clause License · <a href="https://github.com/Gondola-Bros-Entertainment">Gondola Bros Entertainment</a></sub>
 </p>
