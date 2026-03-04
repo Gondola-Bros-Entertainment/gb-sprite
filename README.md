@@ -7,7 +7,7 @@
 
 [![CI](https://github.com/Gondola-Bros-Entertainment/gb-sprite/actions/workflows/ci.yml/badge.svg)](https://github.com/Gondola-Bros-Entertainment/gb-sprite/actions/workflows/ci.yml)
 [![Hackage](https://img.shields.io/hackage/v/gb-sprite.svg)](https://hackage.haskell.org/package/gb-sprite)
-![Haskell](https://img.shields.io/badge/haskell-GHC%209.6-purple)
+![Haskell](https://img.shields.io/badge/haskell-GHC%209.8-purple)
 
 </p>
 </div>
@@ -314,11 +314,11 @@ main = do
 
 ## Build & Test
 
-Requires [GHCup](https://www.haskell.org/ghcup/) with GHC >= 9.6.
+Requires [GHCup](https://www.haskell.org/ghcup/) with GHC >= 9.8.
 
 ```bash
 cabal build                              # Build library
-cabal test                               # Run all tests (105 pure tests)
+cabal test                               # Run all tests (347 pure tests)
 cabal build --ghc-options="-Werror"      # Warnings as errors
 cabal haddock                            # Generate docs
 ```

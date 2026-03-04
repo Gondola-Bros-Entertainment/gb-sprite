@@ -24,6 +24,7 @@ module GBSprite.Draw
   )
 where
 
+import Data.List (foldl')
 import GBSprite.Canvas (Canvas (..), drawLine, fillCircle, fillRect, hLine, setPixel)
 import GBSprite.Color (Color)
 
@@ -32,7 +33,7 @@ drawThickLine :: Canvas -> Int -> Int -> Int -> Int -> Int -> Color -> Canvas
 drawThickLine canvas x0 y0 x1 y1 thickness color =
   let radius = thickness `div` 2
       points = bresenhamPoints x0 y0 x1 y1
-   in foldl (\c (px, py) -> fillCircle c px py radius color) canvas points
+   in foldl' (\c (px, py) -> fillCircle c px py radius color) canvas points
 
 -- | Draw a polygon outline connecting the given vertices.
 drawPolygon :: Canvas -> [(Int, Int)] -> Color -> Canvas
@@ -41,7 +42,7 @@ drawPolygon canvas vertices color = case vertices of
   [_] -> canvas
   (v : vs) ->
     let edges = zip vertices (vs ++ [v])
-     in foldl (\c ((ax, ay), (bx, by)) -> drawLine c ax ay bx by color) canvas edges
+     in foldl' (\c ((ax, ay), (bx, by)) -> drawLine c ax ay bx by color) canvas edges
 
 -- | Fill a polygon using scanline rasterization.
 fillPolygon :: Canvas -> [(Int, Int)] -> Color -> Canvas
@@ -50,16 +51,19 @@ fillPolygon canvas vertices color = case vertices of
   [_] -> canvas
   (v : vs) ->
     let ys = map snd vertices
-        minY = max 0 (minimum ys)
-        maxY = min (cHeight canvas - 1) (maximum ys)
+        minY = max 0 (foldl1' min ys)
+        maxY = min (cHeight canvas - 1) (foldl1' max ys)
         edges = zip vertices (vs ++ [v])
-     in foldl (fillScanline edges) canvas [minY .. maxY]
+     in foldl' (fillScanline edges) canvas [minY .. maxY]
   where
+    foldl1' f (z : zs) = foldl' f z zs
+    foldl1' _ [] = 0
+
     fillScanline edges c scanY =
       let intersections = concatMap (edgeIntersection scanY) edges
           sorted = insertionSort intersections
           pairs = takePairs sorted
-       in foldl (\acc (startX, endX) -> hLine acc startX endX scanY color) c pairs
+       in foldl' (\acc (startX, endX) -> hLine acc startX endX scanY color) c pairs
 
     edgeIntersection :: Int -> ((Int, Int), (Int, Int)) -> [Int]
     edgeIntersection scanY ((ax, ay), (bx, by))
@@ -73,7 +77,7 @@ fillPolygon canvas vertices color = case vertices of
     takePairs _ = []
 
     insertionSort :: [Int] -> [Int]
-    insertionSort = foldl insertSorted []
+    insertionSort = foldl' insertSorted []
 
     insertSorted :: [Int] -> Int -> [Int]
     insertSorted [] x = [x]
@@ -86,18 +90,20 @@ drawEllipse :: Canvas -> Int -> Int -> Int -> Int -> Color -> Canvas
 drawEllipse canvas cx cy rx ry color
   | rx <= 0 || ry <= 0 = setPixel canvas cx cy color
   | otherwise =
-      let region1 = ellipseRegion1 canvas cx cy rx ry color 0 ry initD1
-       in ellipseRegion2 region1 cx cy rx ry color rx 0 initD2
+      let (afterR1, endX, endY) = ellipseRegion1 canvas cx cy rx ry color 0 ry initD1
+          d2 = rySq * (endX * endX + endX) + rxSq * (endY - 1) * (endY - 1) - rxSq * rySq + rySq `div` 4
+       in ellipseRegion2 afterR1 cx cy rx ry color endX endY d2
   where
-    initD1 = ry * ry - rx * rx * ry + rx * rx `div` 4
-    initD2 = ry * ry * rx * rx - ry * ry * rx + rx * rx `div` 4
+    rxSq = rx * rx
+    rySq = ry * ry
+    initD1 = rySq - rxSq * ry + rxSq `div` 4
 
 -- | Fill an ellipse.
 fillEllipse :: Canvas -> Int -> Int -> Int -> Int -> Color -> Canvas
 fillEllipse canvas cx cy rx ry color
   | rx <= 0 || ry <= 0 = setPixel canvas cx cy color
   | otherwise =
-      foldl (\c dy -> hLine c (cx - xWidth dy) (cx + xWidth dy) (cy + dy) color) canvas [negate ry .. ry]
+      foldl' (\c dy -> hLine c (cx - xWidth dy) (cx + xWidth dy) (cy + dy) color) canvas [negate ry .. ry]
   where
     rxF = fromIntegral rx :: Double
     ryF = fromIntegral ry :: Double
@@ -124,7 +130,7 @@ drawArc canvas cx cy rx ry startDeg endDeg color =
       edges = case points of
         [] -> []
         (_ : ps) -> zip points ps
-   in foldl (\c ((ax, ay), (bx, by)) -> drawLine c ax ay bx by color) canvas edges
+   in foldl' (\c ((ax, ay), (bx, by)) -> drawLine c ax ay bx by color) canvas edges
   where
     degToRad :: Double
     degToRad = pi / 180.0
@@ -149,7 +155,7 @@ drawBezier canvas (x0, y0) (ctrlX, ctrlY) (x1, y1) color =
       edges = case points of
         [] -> []
         (_ : ps) -> zip points ps
-   in foldl (\c ((ax, ay), (bx, by)) -> drawLine c ax ay bx by color) canvas edges
+   in foldl' (\c ((ax, ay), (bx, by)) -> drawLine c ax ay bx by color) canvas edges
   where
     bezierSteps :: Int
     bezierSteps = 32
@@ -210,10 +216,10 @@ bresenhamPoints x0 y0 x1 y1 =
                 if e2 <= dx then (nextErr1 + dx, cy + sy) else (nextErr1, cy)
            in (cx, cy) : go nextX nextY nextErr2 dx dy sx sy
 
--- | Ellipse region 1 (where dy/dx > -1).
-ellipseRegion1 :: Canvas -> Int -> Int -> Int -> Int -> Color -> Int -> Int -> Int -> Canvas
+-- | Ellipse region 1 (where dy/dx > -1). Returns (canvas, endX, endY).
+ellipseRegion1 :: Canvas -> Int -> Int -> Int -> Int -> Color -> Int -> Int -> Int -> (Canvas, Int, Int)
 ellipseRegion1 canvas cx cy rx ry color x y d
-  | rySq * (2 * x + 1) >= rxSq * (2 * y) = canvas
+  | rySq * (2 * x + 1) >= rxSq * (2 * y) = (plotEllipsePoints canvas cx cy x y color, x, y)
   | otherwise =
       let drawn = plotEllipsePoints canvas cx cy x y color
           nextX = x + 1
@@ -228,7 +234,7 @@ ellipseRegion1 canvas cx cy rx ry color x y d
 
 -- | Ellipse region 2 (where dy/dx < -1).
 ellipseRegion2 :: Canvas -> Int -> Int -> Int -> Int -> Color -> Int -> Int -> Int -> Canvas
-ellipseRegion2 canvas cx cy _rx _ry color x y d
+ellipseRegion2 canvas cx cy rx ry color x y d
   | y < 0 = canvas
   | otherwise =
       let drawn = plotEllipsePoints canvas cx cy x y color
@@ -237,10 +243,10 @@ ellipseRegion2 canvas cx cy _rx _ry color x y d
             if d > 0
               then (d - rxSq * (2 * nextY + 1), x)
               else (d + rySq * (2 * x + 2) - rxSq * (2 * nextY + 1), x + 1)
-       in ellipseRegion2 drawn cx cy _rx _ry color nextX nextY nextD
+       in ellipseRegion2 drawn cx cy rx ry color nextX nextY nextD
   where
-    rxSq = _rx * _rx
-    rySq = _ry * _ry
+    rxSq = rx * rx
+    rySq = ry * ry
 
 -- | Plot 4 symmetric ellipse points.
 plotEllipsePoints :: Canvas -> Int -> Int -> Int -> Int -> Color -> Canvas

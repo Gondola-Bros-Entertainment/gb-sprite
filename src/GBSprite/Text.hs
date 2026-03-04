@@ -18,6 +18,7 @@ module GBSprite.Text
 where
 
 import Data.Bits (testBit)
+import Data.List (foldl')
 import Data.Word (Word8)
 import GBSprite.Canvas (Canvas, newCanvas, setPixel)
 import GBSprite.Color (Color, transparent)
@@ -64,7 +65,7 @@ renderText font color text =
       charH = fontHeight font
       totalW = length text * charW
       blank = newCanvas totalW charH transparent
-   in foldl (\c (i, ch) -> stamp c (i * charW) 0 (renderChar font color ch)) blank (zip [0 ..] text)
+   in foldl' (\c (i, ch) -> stamp c (i * charW) 0 (renderChar font color ch)) blank (zip [0 ..] text)
 
 -- | Compute the width of rendered text in pixels.
 textWidth :: Font -> String -> Int

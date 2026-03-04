@@ -11,6 +11,7 @@ module GBSprite.Tilemap
   )
 where
 
+import Data.List (foldl')
 import GBSprite.Canvas (Canvas (..), getPixel, newCanvas, setPixel)
 import GBSprite.Color (Color (colorA), transparent)
 import GBSprite.Sheet (SheetEntry (..), SpriteSheet (..))
@@ -42,7 +43,7 @@ renderTilemap sheet config =
       atlas = sheetCanvas sheet
       entries = sheetEntries sheet
       blank = newCanvas totalW totalH transparent
-   in foldl (drawTile atlas entries tw th gw) blank (zip [0 ..] (tmTiles config))
+   in foldl' (drawTile atlas entries tw th gw) blank (zip [0 ..] (tmTiles config))
   where
     drawTile atlas entries tw th gw canvas (gridIdx, tileIdx)
       | tileIdx < 0 = canvas

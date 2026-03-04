@@ -11,7 +11,7 @@ module GBSprite.Sheet
   )
 where
 
-import Data.List (sortBy)
+import Data.List (foldl', sortBy)
 import Data.Ord (Down (..), comparing)
 import GBSprite.Canvas (Canvas (..), newCanvas)
 import GBSprite.Color (transparent)
@@ -50,7 +50,7 @@ packSheet padding items =
   let sorted = sortBy (comparing (Down . cHeight . snd)) items
       (entries, totalW, totalH) = shelfPack padding sorted
       atlas = newCanvas totalW totalH transparent
-      drawn = foldl drawEntry atlas entries
+      drawn = foldl' drawEntry atlas entries
    in SpriteSheet drawn entries
   where
     drawEntry canvas entry =
@@ -96,5 +96,5 @@ computeMaxWidth _padding [] = 1
 computeMaxWidth _padding items =
   let totalArea = sum [cWidth c * cHeight c | (_, c) <- items]
       side = ceiling (sqrt (fromIntegral totalArea :: Double)) :: Int
-      widest = maximum (map (cWidth . snd) items)
+      widest = foldl' (\acc (_, c) -> max acc (cWidth c)) 0 items
    in max side widest

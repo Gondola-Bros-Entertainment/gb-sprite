@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.3.0.0
+
+### Bug Fixes
+
+- Fix `drawEllipse` midpoint algorithm: region 2 now continues from where region 1 ended instead of restarting at `(rx, 0)`. Ellipses now correctly plot all four cardinal edge pixels.
+- Fix `safeSetPixel` in VFX.hs: use `setPixel` directly instead of `fillCircle` with radius 0.
+- Replace partial `minimum`/`maximum` with safe folds in `fillPolygon` (Draw.hs) and `computeMaxWidth` (Sheet.hs).
+
+### Performance
+
+- Replace 16 lazy `foldl` with strict `foldl'` across Draw.hs, VFX.hs, Sheet.hs, Tilemap.hs, and Text.hs.
+
+### Internal
+
+- 347 tests (up from 105): comprehensive coverage of all modules including ellipse fix verification, VFX generators, Canvas utilities, Tilemap, Compose, derived instances.
+- CI and cabal: `tested-with` upgraded from GHC 9.6 to GHC 9.8.
+
 ## 0.2.1.2
 
 - Change license from MIT to BSD-3-Clause.

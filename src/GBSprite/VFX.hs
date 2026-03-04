@@ -21,7 +21,8 @@ module GBSprite.VFX
   )
 where
 
-import GBSprite.Canvas (Canvas (..), fillCircle, newCanvas)
+import Data.List (foldl')
+import GBSprite.Canvas (Canvas (..), fillCircle, newCanvas, setPixel)
 import GBSprite.Color (Color (..), scaleAlpha, transparent)
 
 -- | Configuration for explosion effects.
@@ -151,7 +152,7 @@ renderExplosionFrame config frameIdx =
       progress = fromIntegral frameIdx / fromIntegral (max 1 (expFrameCount config - 1)) :: Double
       maxRadius = fromIntegral center :: Double
       blank = newCanvas size size transparent
-   in foldl (drawParticle center progress maxRadius) blank [0 .. expParticleCount config - 1]
+   in foldl' (drawParticle center progress maxRadius) blank [0 .. expParticleCount config - 1]
   where
     drawParticle center progress maxRadius canvas particleIdx =
       let angle = fromIntegral (particleIdx * lcgStep + expSeed config) * goldenAngle :: Double
@@ -181,7 +182,7 @@ renderRingFrame config frameIdx =
 
 drawRing :: Canvas -> Int -> Int -> Int -> Int -> Color -> Canvas
 drawRing canvas cx cy radius thickness color =
-  foldl (\c r -> drawCircleOutline c cx cy r color) canvas [max 0 (radius - thickness `div` 2) .. radius + thickness `div` 2]
+  foldl' (\c r -> drawCircleOutline c cx cy r color) canvas [max 0 (radius - thickness `div` 2) .. radius + thickness `div` 2]
 
 drawCircleOutline :: Canvas -> Int -> Int -> Int -> Color -> Canvas
 drawCircleOutline canvas cx cy radius color
@@ -197,7 +198,7 @@ drawCircleOutline canvas cx cy radius color
            in go drawn (x + 1) nextY nextD
 
     plotOctants c cx_ cy_ x y col =
-      foldl
+      foldl'
         (\acc (px, py) -> safeSetPixel acc px py col)
         c
         [ (cx_ + x, cy_ + y),
@@ -212,12 +213,12 @@ drawCircleOutline canvas cx cy radius color
 
 safeSetPixel :: Canvas -> Int -> Int -> Color -> Canvas
 safeSetPixel canvas x y color
-  | x >= 0 && x < cWidth_ canvas && y >= 0 && y < cHeight_ canvas =
-      fillCircle canvas x y 0 color
+  | x >= 0 && x < canvasW && y >= 0 && y < canvasH =
+      setPixel canvas x y color
   | otherwise = canvas
   where
-    cWidth_ (Canvas w _ _) = w
-    cHeight_ (Canvas _ h _) = h
+    canvasW = cWidth canvas
+    canvasH = cHeight canvas
 
 renderGlowFrame :: GlowConfig -> Int -> Canvas
 renderGlowFrame config frameIdx =
@@ -240,7 +241,7 @@ renderTrailFrame config frameIdx =
       dotY = h `div` 2
       blank = newCanvas w h transparent
       trailDots = trailDotCount
-   in foldl (drawTrailDot w dotX dotY progress) blank [0 .. trailDots - 1]
+   in foldl' (drawTrailDot w dotX dotY progress) blank [0 .. trailDots - 1]
   where
     trailDotCount :: Int
     trailDotCount = 5
@@ -260,7 +261,7 @@ renderSparksFrame config frameIdx =
       center = size `div` 2
       progress = fromIntegral frameIdx / fromIntegral (max 1 (sparksFrameCount config - 1)) :: Double
       blank = newCanvas size size transparent
-   in foldl (drawSpark center progress) blank [0 .. sparksCount config - 1]
+   in foldl' (drawSpark center progress) blank [0 .. sparksCount config - 1]
   where
     drawSpark center progress canvas sparkIdx =
       let angle = fromIntegral (sparkIdx * lcgStep + sparksSeed config) * goldenAngle :: Double

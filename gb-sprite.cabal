@@ -16,7 +16,7 @@ author:        Devon Tomlin
 maintainer:    devon.tomlin@novavero.ai
 category:      Graphics
 build-type:    Simple
-tested-with:   GHC ==9.6.7
+tested-with:   GHC ==9.8.4
 extra-doc-files: README.md CHANGELOG.md
 homepage:      https://github.com/Gondola-Bros-Entertainment/gb-sprite
 bug-reports:   https://github.com/Gondola-Bros-Entertainment/gb-sprite/issues
