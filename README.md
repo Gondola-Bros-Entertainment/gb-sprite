@@ -318,7 +318,7 @@ Requires [GHCup](https://www.haskell.org/ghcup/) with GHC >= 9.8.
 
 ```bash
 cabal build                              # Build library
-cabal test                               # Run all tests (347 pure tests)
+cabal test                               # Run all tests (356 pure tests)
 cabal build --ghc-options="-Werror"      # Warnings as errors
 cabal haddock                            # Generate docs
 ```

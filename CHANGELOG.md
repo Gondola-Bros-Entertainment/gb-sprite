@@ -7,6 +7,7 @@
 - Fix `drawEllipse` midpoint algorithm: region 2 now continues from where region 1 ended instead of restarting at `(rx, 0)`. Ellipses now correctly plot all four cardinal edge pixels.
 - Fix `safeSetPixel` in VFX.hs: use `setPixel` directly instead of `fillCircle` with radius 0.
 - Replace partial `minimum`/`maximum` with safe folds in `fillPolygon` (Draw.hs) and `computeMaxWidth` (Sheet.hs).
+- Fix `grayscale4` palette: was a duplicate of `gameboy` (green-tinted). Now uses evenly-spaced true grayscale (0, 85, 170, 255).
 
 ### Performance
 
@@ -14,8 +15,9 @@
 
 ### Internal
 
-- 347 tests (up from 105): comprehensive coverage of all modules including ellipse fix verification, VFX generators, Canvas utilities, Tilemap, Compose, derived instances.
+- 356 tests (up from 105): comprehensive coverage of all modules.
 - CI and cabal: `tested-with` upgraded from GHC 9.6 to GHC 9.8.
+- Publish workflow: replace sed version-patching with tag/cabal version verification.
 
 ## 0.2.1.2
 
