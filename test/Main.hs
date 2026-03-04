@@ -766,6 +766,16 @@ testPaletteBuiltins =
   [ ( "grayscale4 has 4 colors",
       assertEqual "gs4 count" 4 (length (paletteColors grayscale4))
     ),
+    ( "grayscale4 colors are true grayscale",
+      assertTrue
+        "gs4 grayscale"
+        (all (\(Color r g b _) -> r == g && g == b) (paletteColors grayscale4))
+    ),
+    ( "gameboy colors are green-tinted",
+      assertTrue
+        "gameboy green"
+        (all (\(Color r g _ _) -> g >= r) (paletteColors gameboy))
+    ),
     ( "grayscale8 has 8 colors",
       assertEqual "gs8 count" 8 (length (paletteColors grayscale8))
     ),
@@ -801,6 +811,31 @@ testPaletteBuiltins =
     ),
     ( "all gameboy colors are opaque",
       assertTrue "gb opaque" (all (\c -> colorA c == 255) (paletteColors gameboy))
+    ),
+    ( "all grayscale4 colors are opaque",
+      assertTrue "gs4 opaque" (all (\c -> colorA c == 255) (paletteColors grayscale4))
+    ),
+    ( "all grayscale8 colors are opaque",
+      assertTrue "gs8 opaque" (all (\c -> colorA c == 255) (paletteColors grayscale8))
+    ),
+    ( "grayscale8 colors are true grayscale",
+      assertTrue
+        "gs8 grayscale"
+        (all (\(Color r g b _) -> r == g && g == b) (paletteColors grayscale8))
+    ),
+    ( "all nes colors are opaque",
+      assertTrue "nes opaque" (all (\c -> colorA c == 255) (paletteColors nes))
+    ),
+    ( "nes first color is black",
+      assertEqual "nes black" (Color 0 0 0 255) (paletteColor nes 0)
+    ),
+    ( "nes second color is white",
+      assertEqual "nes white" (Color 252 252 252 255) (paletteColor nes 1)
+    ),
+    ( "grayscale8 endpoints are black and white",
+      assertTrue
+        "gs8 endpoints"
+        (paletteColor grayscale8 0 == Color 0 0 0 255 && paletteColor grayscale8 7 == Color 255 255 255 255)
     )
   ]
 

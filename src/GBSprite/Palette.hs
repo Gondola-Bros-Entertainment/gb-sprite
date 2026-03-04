@@ -63,14 +63,14 @@ paletteSwap (Palette src) (Palette dst) color =
 -- Built-in palettes
 -- ---------------------------------------------------------------------------
 
--- | Classic 4-shade grayscale (Game Boy style).
+-- | 4-shade grayscale ramp (evenly spaced).
 grayscale4 :: Palette
 grayscale4 =
   Palette
-    [ Color 15 56 15 maxA,
-      Color 48 98 48 maxA,
-      Color 139 172 15 maxA,
-      Color 155 188 15 maxA
+    [ Color 0 0 0 maxA,
+      Color 85 85 85 maxA,
+      Color 170 170 170 maxA,
+      Color 255 255 255 maxA
     ]
   where
     maxA = 255
