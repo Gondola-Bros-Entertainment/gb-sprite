@@ -73,14 +73,14 @@ jobs:
           key: cabal-${{ runner.os }}-${{ hashFiles('gb-sprite.cabal') }}
           restore-keys: cabal-${{ runner.os }}-
 
+      - name: Haddock
+        run: cabal haddock
+
       - name: Build
         run: cabal build --ghc-options="-Werror"
 
       - name: Test
         run: cabal test
-
-      - name: Haddock
-        run: cabal haddock
 
   # ---------------------------------------------------------------------------
   # Packaging check (Linux-only)

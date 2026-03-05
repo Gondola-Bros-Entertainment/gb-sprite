@@ -24,6 +24,7 @@ import GBSprite.Text (Font (..), defaultFont, renderChar, renderText, textHeight
 import GBSprite.Tilemap (TilemapConfig (..), renderTilemap)
 import GBSprite.Transform (dropShadow, flipH, flipV, outline, rotate180, rotate270, rotate90, scaleNearest)
 import GBSprite.VFX (ExplosionConfig (..), GlowConfig (..), RingConfig (..), SparksConfig (..), TrailConfig (..), explosionFrames, flashFrames, glowPulseFrames, ringExpandFrames, sparksFrames, trailFrames)
+import System.Directory (removeFile)
 import System.Exit (exitFailure, exitSuccess)
 import System.IO (hClose, hFlush, openTempFile, stdout)
 
@@ -1241,7 +1242,11 @@ testBmpRoundtrip = do
   hClose tmpHandle
   writeBmp path canvas
   raw <- BS.readFile path
+  removeFile path
   let bytes = BS.unpack raw
+      safeIdx xs idx
+        | idx < length xs = xs `seq` (xs !! idx) -- guarded by length check
+        | otherwise = 0
   return
     [ ( "BMP starts with BM magic",
         assertEqual "BM magic" [0x42, 0x4D] (take 2 bytes)
@@ -1270,10 +1275,10 @@ testBmpRoundtrip = do
       ( "BMP encodes pixel data as BGRA",
         -- First pixel (bottom-left in BMP) should be red = BGRA(0,0,255,255)
         let pixelStart = 54
-            b = bytes !! pixelStart
-            g = bytes !! (pixelStart + 1)
-            r = bytes !! (pixelStart + 2)
-            a = bytes !! (pixelStart + 3)
+            b = safeIdx bytes pixelStart
+            g = safeIdx bytes (pixelStart + 1)
+            r = safeIdx bytes (pixelStart + 2)
+            a = safeIdx bytes (pixelStart + 3)
          in assertEqual "BGRA pixel" (0, 0, 255, 255) (b, g, r, a)
       )
     ]

@@ -121,6 +121,7 @@ red, green, blue, white, black, transparent :: Color
 lerp       :: Double -> Color -> Color -> Color   -- linear interpolation
 multiply   :: Color -> Color -> Color              -- component-wise multiply
 alphaBlend :: Color -> Color -> Color              -- Porter-Duff "over"
+withAlpha  :: Word8 -> Color -> Color              -- replace alpha channel
 scaleAlpha :: Double -> Color -> Color             -- scale alpha channel
 ```
 
@@ -148,6 +149,7 @@ drawPolygon   :: Canvas -> [(Int, Int)] -> Color -> Canvas
 fillPolygon   :: Canvas -> [(Int, Int)] -> Color -> Canvas  -- scanline fill
 drawEllipse   :: Canvas -> Int -> Int -> Int -> Int -> Color -> Canvas
 fillEllipse   :: Canvas -> Int -> Int -> Int -> Int -> Color -> Canvas
+drawArc       :: Canvas -> Int -> Int -> Int -> Int -> Double -> Double -> Color -> Canvas
 drawBezier    :: Canvas -> (Int,Int) -> (Int,Int) -> (Int,Int) -> Color -> Canvas
 drawRoundRect :: Canvas -> Int -> Int -> Int -> Int -> Int -> Color -> Canvas
 fillRoundRect :: Canvas -> Int -> Int -> Int -> Int -> Int -> Color -> Canvas
@@ -202,6 +204,44 @@ nineSlice       :: Canvas -> Int -> Int -> Int -> Int -> NineSlice  -- define bo
 renderNineSlice :: NineSlice -> Int -> Int -> Canvas                -- render at target size
 ```
 
+### Palette
+
+Indexed color palettes for retro-style coloring and palette swaps:
+
+```haskell
+newtype Palette = Palette { paletteColors :: [Color] }
+
+-- Built-in palettes
+grayscale4, grayscale8 :: Palette            -- 4/8-shade grayscale ramps
+gameboy              :: Palette              -- authentic DMG green palette
+nes                  :: Palette              -- 16-color NES-inspired palette
+
+-- Operations
+fromColors   :: [Color] -> Palette           -- build palette from color list
+paletteColor :: Palette -> Int -> Color      -- look up color by index (clamped)
+paletteSwap  :: Palette -> Palette -> Color -> Color  -- remap source to destination
+```
+
+### Sprite
+
+Named multi-frame images with origin and bounding box:
+
+```haskell
+data Sprite = Sprite
+  { spriteName :: !String, spriteOriginX :: !Int, spriteOriginY :: !Int
+  , spriteFrames :: ![Canvas], spriteBounds :: !(Maybe BoundingBox) }
+
+data BoundingBox = BoundingBox
+  { bbX :: !Int, bbY :: !Int, bbWidth :: !Int, bbHeight :: !Int }
+
+singleFrame  :: String -> Canvas -> Sprite                 -- single-frame at origin (0,0)
+multiFrame   :: String -> Int -> Int -> [Canvas] -> Sprite -- name, originX, originY, frames
+spriteWidth  :: Sprite -> Int
+spriteHeight :: Sprite -> Int
+frameCount   :: Sprite -> Int
+getFrame     :: Sprite -> Int -> Maybe Canvas              -- safe index lookup
+```
+
 ### Dither
 
 Ordered dithering for retro palette reduction:
@@ -228,6 +268,7 @@ defaultFont :: Font                                     -- built-in 8x8 pixel fo
 renderText  :: Font -> Color -> String -> Canvas
 renderChar  :: Font -> Color -> Char -> Canvas
 textWidth   :: Font -> String -> Int
+textHeight  :: Font -> Int
 ```
 
 ### VFX
@@ -249,6 +290,7 @@ data LoopMode = Loop | Once | PingPong
 data Animation = Animation
   { animFrameDelay :: !Int, animFrameCount :: !Int, animLoopMode :: !LoopMode }
 
+animation         :: Int -> Int -> LoopMode -> Animation -- delay, frame count, mode
 loopAnimation     :: Int -> Int -> Animation           -- delay, frame count
 onceAnimation     :: Int -> Int -> Animation
 pingPongAnimation :: Int -> Int -> Animation
@@ -256,11 +298,25 @@ animationFrame    :: Animation -> Int -> Int            -- animation, tick → f
 animationDone     :: Animation -> Int -> Bool           -- animation, tick → finished?
 ```
 
+### Tilemap
+
+Tile-based map rendering from a sprite atlas:
+
+```haskell
+data TilemapConfig = TilemapConfig
+  { tmTileWidth :: !Int, tmTileHeight :: !Int
+  , tmGridWidth :: !Int, tmGridHeight :: !Int
+  , tmTiles :: ![Int] }                                    -- row-major tile indices
+
+renderTilemap :: SpriteSheet -> TilemapConfig -> Canvas     -- render grid from atlas
+```
+
 ### BMP / Export
 
 ```haskell
-encodeBmp :: Canvas -> BS.ByteString               -- pure: canvas → BMP bytes
+encodeBmp :: Canvas -> BL.ByteString               -- pure: canvas → BMP bytes (lazy)
 writeBmp  :: FilePath -> Canvas -> IO ()            -- write BMP file
+exportBmp :: FilePath -> Canvas -> IO ()            -- re-export of writeBmp (GBSprite.Export)
 
 -- With juicy-pixels flag (GBSprite.Export.PNG):
 exportPng :: FilePath -> Canvas -> IO ()            -- write PNG file
