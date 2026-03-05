@@ -21,7 +21,7 @@ gb-sprite is a pure Haskell library for procedurally generating 2D sprites, anim
 Companion to [gb-synth](https://github.com/Gondola-Bros-Entertainment/gb-synth) (procedural audio) and [gb-vector](https://github.com/Gondola-Bros-Entertainment/gb-vector) (SVG generation).
 
 **Features:**
-- Vector-backed RGBA canvas with drawing primitives (lines, circles, polygons, Bezier curves)
+- ByteString-backed RGBA canvas with drawing primitives (lines, circles, polygons, Bezier curves)
 - Transforms: flip, rotate, scale, outline, drop shadow
 - Alpha-blended compositing and layering
 - Sprite sheet packing (shelf bin packing) with metadata
@@ -35,7 +35,7 @@ Companion to [gb-synth](https://github.com/Gondola-Bros-Entertainment/gb-synth) 
 - BMP export (32-bit BGRA, raw header bytes)
 - PNG export (32-bit RGBA, zlib compressed)
 
-**Core dependencies:** `base`, `bytestring`, `vector`, `zlib`.
+**Core dependencies:** `base`, `bytestring`, `zlib`.
 
 ---
 
@@ -44,7 +44,7 @@ Companion to [gb-synth](https://github.com/Gondola-Bros-Entertainment/gb-synth) 
 ```
 src/GBSprite/
 ├── Color.hs       RGBA type, named colors, lerp, multiply, alpha blend
-├── Canvas.hs      2D pixel grid (Vector.Storable), drawing primitives
+├── Canvas.hs      2D pixel grid (strict ByteString), drawing primitives
 ├── Draw.hs        Thick lines, polygons, ellipses, arcs, Bezier curves
 ├── Palette.hs     Indexed palettes (gameboy, NES), palette swap
 ├── Sprite.hs      Named sprite with origin, frames, bounding box
@@ -81,7 +81,7 @@ VFX generators → [Canvas] frames ───────────────
 Add to your `.cabal` file:
 
 ```cabal
-build-depends: gb-sprite >= 0.2
+build-depends: gb-sprite >= 0.3
 ```
 
 ### Generating sprites
@@ -120,7 +120,7 @@ scaleAlpha :: Double -> Color -> Color             -- scale alpha channel
 ### Canvas
 
 ```haskell
-data Canvas = Canvas { cWidth :: !Int, cHeight :: !Int, cPixels :: !(VS.Vector Word8) }
+data Canvas = Canvas { cWidth :: !Int, cHeight :: !Int, cPixels :: !BS.ByteString }
 
 newCanvas  :: Int -> Int -> Color -> Canvas        -- blank canvas filled with color
 setPixel   :: Canvas -> Int -> Int -> Color -> Canvas
@@ -366,7 +366,7 @@ Requires [GHCup](https://www.haskell.org/ghcup/) with GHC >= 9.8.
 
 ```bash
 cabal build                              # Build library
-cabal test                               # Run all tests (356 pure tests)
+cabal test                               # Run all tests (366 pure tests)
 cabal build --ghc-options="-Werror"      # Warnings as errors
 cabal haddock                            # Generate docs
 ```

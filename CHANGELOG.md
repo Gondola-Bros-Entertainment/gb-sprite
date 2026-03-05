@@ -1,6 +1,21 @@
 # Changelog
 
-## 0.3.0.1
+## 0.4.0.0
+
+### Breaking Changes
+
+- **Drop `vector` dependency.** Canvas pixel storage changed from `Data.Vector.Storable.Vector Word8` to strict `ByteString`. Users pattern-matching on `cPixels` will need to update. All public API functions are unchanged.
+
+### New
+
+- **Native PNG export** (`GBSprite.PNG`): hand-rolled 32-bit RGBA PNG encoder using zlib for DEFLATE compression and a pure CRC32 implementation. PNG export is now always available — no flags, no JuicyPixels.
+- `GBSprite.Export` now re-exports both `exportBmp` and `exportPng`.
+- 10 new PNG tests (366 total, up from 356).
+
+### Removed
+
+- **`juicy-pixels` flag and `GBSprite.Export.PNG`** — replaced by native `GBSprite.PNG`.
+- **`vector` dependency** — pixel data now uses `bytestring` with `unsafeCreate`/`pokeByteOff` for O(n) generation.
 
 ### Fixes
 
@@ -8,6 +23,10 @@
 - Replace partial `!!` with safe indexing in BMP test.
 - Fix CI: run haddock before build to avoid stale `.hi` files causing 0% doc coverage.
 - Fix README: correct `encodeBmp` return type, add missing API sections (Palette, Sprite, Tilemap), add missing exported functions.
+
+### Dependencies
+
+- `base`, `bytestring`, `zlib` — that's it. Down from `base`, `bytestring`, `vector`, optional `JuicyPixels`.
 
 ## 0.3.0.0
 

@@ -10,9 +10,8 @@ module GBSprite.Gradient
   )
 where
 
-import qualified Data.Vector.Storable as VS
 import Data.Word (Word8)
-import GBSprite.Canvas (Canvas (..))
+import GBSprite.Canvas (Canvas (..), generatePixelData)
 import GBSprite.Color (Color (..), lerp)
 
 -- | Generate a linear gradient canvas.
@@ -23,7 +22,7 @@ import GBSprite.Color (Color (..), lerp)
 -- otherwise top to bottom.
 linearGradient :: Int -> Int -> Color -> Color -> Bool -> Canvas
 linearGradient w h startColor endColor horizontal =
-  let pixels = VS.generate (w * h * bytesPerPixel) $ \i ->
+  let pixels = generatePixelData (w * h * bytesPerPixel) $ \i ->
         let pixIdx = i `div` bytesPerPixel
             channel = i `mod` bytesPerPixel
             x = pixIdx `mod` w
@@ -44,7 +43,7 @@ linearGradient w h startColor endColor horizontal =
 radialGradient :: Int -> Int -> Int -> Int -> Int -> Color -> Color -> Canvas
 radialGradient w h cx cy radius innerColor outerColor =
   let radiusF = fromIntegral (max 1 radius) :: Double
-      pixels = VS.generate (w * h * bytesPerPixel) $ \i ->
+      pixels = generatePixelData (w * h * bytesPerPixel) $ \i ->
         let pixIdx = i `div` bytesPerPixel
             channel = i `mod` bytesPerPixel
             x = pixIdx `mod` w
@@ -65,7 +64,7 @@ radialGradient w h cx cy radius innerColor outerColor =
 diagonalGradient :: Int -> Int -> Color -> Color -> Canvas
 diagonalGradient w h startColor endColor =
   let maxDist = fromIntegral (max 1 (w - 1 + h - 1)) :: Double
-      pixels = VS.generate (w * h * bytesPerPixel) $ \i ->
+      pixels = generatePixelData (w * h * bytesPerPixel) $ \i ->
         let pixIdx = i `div` bytesPerPixel
             channel = i `mod` bytesPerPixel
             x = pixIdx `mod` w

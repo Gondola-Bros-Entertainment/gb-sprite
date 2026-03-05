@@ -10,9 +10,9 @@ module GBSprite.Compose
   )
 where
 
-import qualified Data.Vector.Storable as VS
+import Data.ByteString.Unsafe (unsafeIndex)
 import Data.Word (Word8)
-import GBSprite.Canvas (Canvas (..))
+import GBSprite.Canvas (Canvas (..), generatePixelData)
 import GBSprite.Color (Color (..), alphaBlend)
 
 -- | Stamp @src@ onto @dst@ at position @(x, y)@ with direct overwrite.
@@ -26,7 +26,7 @@ stamp dst ox oy src =
       srcW = cWidth src
       srcH = cHeight src
       srcPx = cPixels src
-      pixels = VS.generate (dstW * dstH * bytesPerPixel) $ \i ->
+      pixels = generatePixelData (dstW * dstH * bytesPerPixel) $ \i ->
         let pixIdx = i `div` bytesPerPixel
             channel = i `mod` bytesPerPixel
             dx = pixIdx `mod` dstW
@@ -36,11 +36,11 @@ stamp dst ox oy src =
          in if sx >= 0 && sx < srcW && sy >= 0 && sy < srcH
               then
                 let srcIdx = (sy * srcW + sx) * bytesPerPixel
-                    sa = srcPx `VS.unsafeIndex` (srcIdx + 3)
+                    sa = srcPx `unsafeIndex` (srcIdx + 3)
                  in if sa > 0
-                      then srcPx `VS.unsafeIndex` (srcIdx + channel)
-                      else dstPx `VS.unsafeIndex` i
-              else dstPx `VS.unsafeIndex` i
+                      then srcPx `unsafeIndex` (srcIdx + channel)
+                      else dstPx `unsafeIndex` i
+              else dstPx `unsafeIndex` i
    in dst {cPixels = pixels}
 
 -- | Stamp @src@ onto @dst@ at position @(x, y)@ with alpha blending.
@@ -52,7 +52,7 @@ stampAlpha dst ox oy src =
       srcW = cWidth src
       srcH = cHeight src
       srcPx = cPixels src
-      pixels = VS.generate (dstW * dstH * bytesPerPixel) $ \i ->
+      pixels = generatePixelData (dstW * dstH * bytesPerPixel) $ \i ->
         let pixIdx = i `div` bytesPerPixel
             channel = i `mod` bytesPerPixel
             dx = pixIdx `mod` dstW
@@ -62,24 +62,24 @@ stampAlpha dst ox oy src =
          in if sx >= 0 && sx < srcW && sy >= 0 && sy < srcH
               then
                 let srcIdx = (sy * srcW + sx) * bytesPerPixel
-                    sa = srcPx `VS.unsafeIndex` (srcIdx + 3)
+                    sa = srcPx `unsafeIndex` (srcIdx + 3)
                  in if sa > 0
                       then
-                        let sr = srcPx `VS.unsafeIndex` srcIdx
-                            sg = srcPx `VS.unsafeIndex` (srcIdx + 1)
-                            sb = srcPx `VS.unsafeIndex` (srcIdx + 2)
+                        let sr = srcPx `unsafeIndex` srcIdx
+                            sg = srcPx `unsafeIndex` (srcIdx + 1)
+                            sb = srcPx `unsafeIndex` (srcIdx + 2)
                             dstIdx = pixIdx * bytesPerPixel
-                            dr = dstPx `VS.unsafeIndex` dstIdx
-                            dg = dstPx `VS.unsafeIndex` (dstIdx + 1)
-                            db = dstPx `VS.unsafeIndex` (dstIdx + 2)
-                            da = dstPx `VS.unsafeIndex` (dstIdx + 3)
+                            dr = dstPx `unsafeIndex` dstIdx
+                            dg = dstPx `unsafeIndex` (dstIdx + 1)
+                            db = dstPx `unsafeIndex` (dstIdx + 2)
+                            da = dstPx `unsafeIndex` (dstIdx + 3)
                             Color bR bG bB bA =
                               alphaBlend
                                 (Color sr sg sb sa)
                                 (Color dr dg db da)
                          in colorChannel channel bR bG bB bA
-                      else dstPx `VS.unsafeIndex` i
-              else dstPx `VS.unsafeIndex` i
+                      else dstPx `unsafeIndex` i
+              else dstPx `unsafeIndex` i
    in dst {cPixels = pixels}
 
 -- | Overlay @top@ onto @bottom@ (same size), producing a new canvas.

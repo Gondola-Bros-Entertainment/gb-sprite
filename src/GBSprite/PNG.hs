@@ -11,14 +11,13 @@ module GBSprite.PNG
 where
 
 import qualified Codec.Compression.Zlib as Z
-import Data.Bits (shiftR, xor, (.&.))
+import Data.Bits (shiftL, shiftR, xor, (.&.), (.|.))
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Builder as B
 import qualified Data.ByteString.Lazy as BL
 import Data.List (foldl')
-import qualified Data.Vector.Storable as VS
 import Data.Word (Word32, Word8)
-import GBSprite.Canvas (Canvas (..))
+import GBSprite.Canvas (Canvas (..), generatePixelData)
 
 -- | Write a canvas to a PNG file.
 writePng :: FilePath -> Canvas -> IO ()
@@ -53,17 +52,16 @@ encodeIHDR w h =
    in encodeChunk ihdrTag bodyBS
 
 -- | IDAT chunk: zlib-compressed filtered pixel data.
-encodeIDAT :: Int -> Int -> VS.Vector Word8 -> B.Builder
+encodeIDAT :: Int -> Int -> BS.ByteString -> B.Builder
 encodeIDAT w h pixels =
   let rowSize = w * pngBytesPerPixel
-      rawRows =
-        mconcat
-          [ B.word8 0 -- filter type: None
-              <> mconcat
-                [B.word8 (pixels VS.! (y * rowSize + x)) | x <- [0 .. rowSize - 1]]
-          | y <- [0 .. h - 1]
-          ]
-      compressed = BL.toStrict (Z.compress (B.toLazyByteString rawRows))
+      rawRows = generatePixelData (h * (1 + rowSize)) $ \i ->
+        let row = i `div` (1 + rowSize)
+            col = i `mod` (1 + rowSize)
+         in if col == 0
+              then 0 -- filter type: None
+              else BS.index pixels (row * rowSize + (col - 1))
+      compressed = BL.toStrict (Z.compress (BL.fromStrict rawRows))
    in encodeChunk idatTag compressed
 
 -- | IEND chunk: empty terminator.
@@ -89,13 +87,33 @@ crc32 = xor crcMask . BS.foldl' step crcMask
   where
     step acc byte =
       let idx = fromIntegral ((acc `xor` fromIntegral byte) .&. 0xFF)
-       in (acc `shiftR` 8) `xor` (crcTable VS.! idx)
+       in (acc `shiftR` 8) `xor` crcLookup idx
 
--- | Precomputed CRC32 lookup table (256 entries).
-crcTable :: VS.Vector Word32
-crcTable = VS.generate crcTableSize gen
+-- | Look up a CRC32 table entry. The table is packed as 1024 bytes
+-- (256 entries x 4 bytes each, little-endian).
+crcLookup :: Int -> Word32
+crcLookup i =
+  let off = i * crcEntrySize
+      a = fromIntegral (BS.index crcTableBS off)
+      b = fromIntegral (BS.index crcTableBS (off + 1))
+      c = fromIntegral (BS.index crcTableBS (off + 2))
+      d = fromIntegral (BS.index crcTableBS (off + 3))
+   in a .|. (b `shiftL` 8) .|. (c `shiftL` 16) .|. (d `shiftL` 24)
+
+-- | Precomputed CRC32 lookup table packed as a 'BS.ByteString'.
+crcTableBS :: BS.ByteString
+crcTableBS = BS.pack (concatMap encodeLE32 [crcEntry i | i <- [0 .. crcTableSize - 1]])
   where
-    gen n = foldl' (\c _ -> crcStep c) (fromIntegral n) [(1 :: Int) .. crcBitsPerByte]
+    encodeLE32 w =
+      [ fromIntegral w,
+        fromIntegral (w `shiftR` 8),
+        fromIntegral (w `shiftR` 16),
+        fromIntegral (w `shiftR` 24)
+      ]
+
+-- | Compute one CRC32 table entry.
+crcEntry :: Int -> Word32
+crcEntry n = foldl' (\c _ -> crcStep c) (fromIntegral n) [(1 :: Int) .. crcBitsPerByte]
 
 -- | One step of the CRC32 polynomial division.
 crcStep :: Word32 -> Word32
@@ -146,6 +164,10 @@ crcMask = 0xFFFFFFFF
 -- | CRC32 table size.
 crcTableSize :: Int
 crcTableSize = 256
+
+-- | Bytes per CRC32 table entry.
+crcEntrySize :: Int
+crcEntrySize = 4
 
 -- | Bits processed per byte in CRC32 table generation.
 crcBitsPerByte :: Int

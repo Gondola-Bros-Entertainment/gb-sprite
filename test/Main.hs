@@ -5,7 +5,6 @@ module Main (main) where
 
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as BL
-import qualified Data.Vector.Storable as VS
 import Data.Word (Word8)
 import GBSprite.Animation (Animation (..), LoopMode (..), animation, animationDone, animationFrame, loopAnimation, onceAnimation, pingPongAnimation)
 import GBSprite.BMP (encodeBmp, writeBmp)
@@ -292,7 +291,7 @@ testCanvas =
     ),
     ( "newCanvas pixel count correct",
       let c = newCanvas canvasSize canvasSize transparent
-       in assertEqual "pixel bytes" (canvasSize * canvasSize * 4) (VS.length (cPixels c))
+       in assertEqual "pixel bytes" (canvasSize * canvasSize * 4) (BS.length (cPixels c))
     ),
     ( "setPixel then getPixel roundtrip",
       let c = setPixel (newCanvas canvasSize canvasSize transparent) 5 5 red

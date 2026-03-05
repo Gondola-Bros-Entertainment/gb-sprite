@@ -16,8 +16,8 @@ module GBSprite.NineSlice
   )
 where
 
-import qualified Data.Vector.Storable as VS
-import GBSprite.Canvas (Canvas (..))
+import Data.ByteString.Unsafe (unsafeIndex)
+import GBSprite.Canvas (Canvas (..), generatePixelData)
 
 -- | A nine-slice definition: source canvas plus border insets.
 data NineSlice = NineSlice
@@ -68,7 +68,7 @@ renderNineSlice ns targetW targetH =
       centerSrcH = max 1 (srcH - top - bottom)
       centerDstW = max 0 (targetW - left - right)
       centerDstH = max 0 (targetH - top - bottom)
-      pixels = VS.generate (targetW * targetH * bytesPerPixel) $ \i ->
+      pixels = generatePixelData (targetW * targetH * bytesPerPixel) $ \i ->
         let pixIdx = i `div` bytesPerPixel
             channel = i `mod` bytesPerPixel
             x = pixIdx `mod` targetW
@@ -77,7 +77,7 @@ renderNineSlice ns targetW targetH =
             srcY = mapCoord y top bottom centerSrcH centerDstH srcH targetH
             srcIdx = (srcY * srcW + srcX) * bytesPerPixel + channel
          in if srcX >= 0 && srcX < srcW && srcY >= 0 && srcY < srcH
-              then src `VS.unsafeIndex` srcIdx
+              then unsafeIndex src srcIdx
               else 0
    in Canvas targetW targetH pixels
 

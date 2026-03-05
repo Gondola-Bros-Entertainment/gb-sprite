@@ -1,6 +1,6 @@
--- | 2D pixel grid backed by 'Data.Vector.Storable'.
+-- | 2D pixel grid backed by strict 'Data.ByteString.ByteString'.
 --
--- A t'Canvas' is a mutable-width x height RGBA pixel buffer. All drawing
+-- A t'Canvas' is a width x height RGBA pixel buffer. All drawing
 -- operations are pure @Canvas -> Canvas@ transforms. Coordinates use
 -- @(Int, Int)@ with origin at top-left, x increasing right, y increasing
 -- down.
@@ -29,11 +29,16 @@ module GBSprite.Canvas
     clearCanvas,
     pixelIndex,
     inBounds,
+
+    -- * Low-level
+    generatePixelData,
   )
 where
 
-import qualified Data.Vector.Storable as VS
+import qualified Data.ByteString as BS
+import Data.ByteString.Internal (unsafeCreate)
 import Data.Word (Word8)
+import Foreign.Storable (pokeByteOff)
 import GBSprite.Color (Color (..), transparent)
 
 -- | A 2D RGBA pixel grid.
@@ -43,7 +48,7 @@ import GBSprite.Color (Color (..), transparent)
 data Canvas = Canvas
   { cWidth :: !Int,
     cHeight :: !Int,
-    cPixels :: !(VS.Vector Word8)
+    cPixels :: !BS.ByteString
   }
   deriving (Show, Eq)
 
@@ -51,13 +56,22 @@ data Canvas = Canvas
 bytesPerPixel :: Int
 bytesPerPixel = 4
 
+-- | Generate a pixel byte buffer from a flat index function.
+--
+-- @generatePixelData n f@ creates a 'BS.ByteString' of @n@ bytes where
+-- byte @i@ is computed by @f i@. This is the core primitive for
+-- single-pass O(n) canvas construction.
+generatePixelData :: Int -> (Int -> Word8) -> BS.ByteString
+generatePixelData n f = unsafeCreate n $ \ptr ->
+  mapM_ (\i -> pokeByteOff ptr i (f i)) [0 .. n - 1]
+
 -- | Create a canvas filled with a solid color.
 newCanvas :: Int -> Int -> Color -> Canvas
 newCanvas w h color =
   Canvas
     { cWidth = w,
       cHeight = h,
-      cPixels = VS.generate (w * h * bytesPerPixel) (pixelByte color w)
+      cPixels = generatePixelData (w * h * bytesPerPixel) (pixelByte color w)
     }
 
 -- | Create a canvas from a flat list of colors (row-major).
@@ -66,7 +80,7 @@ fromPixels w h colors =
   Canvas
     { cWidth = w,
       cHeight = h,
-      cPixels = VS.fromList (concatMap colorToBytes (take (w * h) padded))
+      cPixels = BS.pack (concatMap colorToBytes (take (w * h) padded))
     }
   where
     padded = colors ++ repeat transparent
@@ -86,10 +100,10 @@ getPixel canvas x y
       let idx = pixelIndex (cWidth canvas) x y
           px = cPixels canvas
        in Color
-            (px VS.! idx)
-            (px VS.! (idx + 1))
-            (px VS.! (idx + 2))
-            (px VS.! (idx + 3))
+            (BS.index px idx)
+            (BS.index px (idx + 1))
+            (BS.index px (idx + 2))
+            (BS.index px (idx + 3))
   | otherwise = transparent
 
 -- | Set the color at @(x, y)@. No-op for out-of-bounds.
@@ -97,14 +111,12 @@ setPixel :: Canvas -> Int -> Int -> Color -> Canvas
 setPixel canvas x y color
   | inBounds canvas x y =
       let idx = pixelIndex (cWidth canvas) x y
+          px = cPixels canvas
+          (before, rest) = BS.splitAt idx px
+          after = BS.drop bytesPerPixel rest
        in canvas
             { cPixels =
-                cPixels canvas
-                  VS.// [ (idx, colorR color),
-                          (idx + 1, colorG color),
-                          (idx + 2, colorB color),
-                          (idx + 3, colorA color)
-                        ]
+                before <> BS.pack [colorR color, colorG color, colorB color, colorA color] <> after
             }
   | otherwise = canvas
 
@@ -278,7 +290,7 @@ floodFill canvas x y fillColor
 clearCanvas :: Canvas -> Color -> Canvas
 clearCanvas canvas color =
   canvas
-    { cPixels = VS.generate (cWidth canvas * cHeight canvas * bytesPerPixel) (pixelByte color (cWidth canvas))
+    { cPixels = generatePixelData (cWidth canvas * cHeight canvas * bytesPerPixel) (pixelByte color (cWidth canvas))
     }
 
 -- ---------------------------------------------------------------------------

@@ -21,9 +21,10 @@ module GBSprite.Transform
   )
 where
 
-import qualified Data.Vector.Storable as VS
+import qualified Data.ByteString as BS
+import Data.ByteString.Unsafe (unsafeIndex)
 import Data.Word (Word8)
-import GBSprite.Canvas (Canvas (..), getPixel)
+import GBSprite.Canvas (Canvas (..), generatePixelData, getPixel)
 import GBSprite.Color (Color (..), alphaBlend, transparent)
 
 -- | Flip horizontally (mirror left-right).
@@ -34,7 +35,7 @@ flipH canvas =
       src = cPixels canvas
    in Canvas w h $ generatePixels w h $ \x y ->
         let srcIdx = (y * w + (w - 1 - x)) * bytesPerPixel
-         in \ch -> src `VS.unsafeIndex` (srcIdx + ch)
+         in \ch -> src `unsafeIndex` (srcIdx + ch)
 
 -- | Flip vertically (mirror top-bottom).
 flipV :: Canvas -> Canvas
@@ -44,7 +45,7 @@ flipV canvas =
       src = cPixels canvas
    in Canvas w h $ generatePixels w h $ \x y ->
         let srcIdx = ((h - 1 - y) * w + x) * bytesPerPixel
-         in \ch -> src `VS.unsafeIndex` (srcIdx + ch)
+         in \ch -> src `unsafeIndex` (srcIdx + ch)
 
 -- | Rotate 90 degrees clockwise. Width and height swap.
 rotate90 :: Canvas -> Canvas
@@ -54,7 +55,7 @@ rotate90 canvas =
       src = cPixels canvas
    in Canvas h w $ generatePixels h w $ \x y ->
         let srcIdx = ((h - 1 - x) * w + y) * bytesPerPixel
-         in \ch -> src `VS.unsafeIndex` (srcIdx + ch)
+         in \ch -> src `unsafeIndex` (srcIdx + ch)
 
 -- | Rotate 180 degrees.
 rotate180 :: Canvas -> Canvas
@@ -64,7 +65,7 @@ rotate180 canvas =
       src = cPixels canvas
    in Canvas w h $ generatePixels w h $ \x y ->
         let srcIdx = ((h - 1 - y) * w + (w - 1 - x)) * bytesPerPixel
-         in \ch -> src `VS.unsafeIndex` (srcIdx + ch)
+         in \ch -> src `unsafeIndex` (srcIdx + ch)
 
 -- | Rotate 270 degrees clockwise (= 90 degrees counter-clockwise).
 rotate270 :: Canvas -> Canvas
@@ -74,7 +75,7 @@ rotate270 canvas =
       src = cPixels canvas
    in Canvas h w $ generatePixels h w $ \x y ->
         let srcIdx = (x * w + (w - 1 - y)) * bytesPerPixel
-         in \ch -> src `VS.unsafeIndex` (srcIdx + ch)
+         in \ch -> src `unsafeIndex` (srcIdx + ch)
 
 -- | Scale using nearest-neighbor interpolation.
 --
@@ -90,7 +91,7 @@ scaleNearest factor canvas
           src = cPixels canvas
        in Canvas newW newH $ generatePixels newW newH $ \x y ->
             let srcIdx = ((y `div` factor) * w + (x `div` factor)) * bytesPerPixel
-             in \ch -> src `VS.unsafeIndex` (srcIdx + ch)
+             in \ch -> src `unsafeIndex` (srcIdx + ch)
 
 -- | Add an outline around non-transparent pixels.
 --
@@ -101,7 +102,7 @@ outline outlineColor canvas =
   let w = cWidth canvas
       h = cHeight canvas
       Color oR oG oB oA = outlineColor
-      pixels = VS.generate (w * h * bytesPerPixel) $ \i ->
+      pixels = generatePixelData (w * h * bytesPerPixel) $ \i ->
         let pixIdx = i `div` bytesPerPixel
             channel = i `mod` bytesPerPixel
             x = pixIdx `mod` w
@@ -111,7 +112,7 @@ outline outlineColor canvas =
               then colorChannel channel oR oG oB oA
               else
                 let srcIdx = pixIdx * bytesPerPixel + channel
-                 in cPixels canvas `VS.unsafeIndex` srcIdx
+                 in unsafeIndex (cPixels canvas) srcIdx
    in Canvas w h pixels
   where
     hasOpaqueNeighbor w h x y =
@@ -139,7 +140,7 @@ dropShadow dx dy shadowColor canvas =
       origOffX = max 0 (negate dx)
       origOffY = max 0 (negate dy)
       Color sR sG sB sA = shadowColor
-      pixels = VS.generate (padW * padH * bytesPerPixel) $ \i ->
+      pixels = generatePixelData (padW * padH * bytesPerPixel) $ \i ->
         let pixIdx = i `div` bytesPerPixel
             channel = i `mod` bytesPerPixel
             px = pixIdx `mod` padW
@@ -184,8 +185,8 @@ bytesPerPixel = 4
 
 -- | Generate a pixel vector from a coordinate-to-channel function.
 -- The function receives (x, y) and returns a channel reader (channelIdx -> byte).
-generatePixels :: Int -> Int -> (Int -> Int -> Int -> Word8) -> VS.Vector Word8
-generatePixels w h pixelFn = VS.generate (w * h * bytesPerPixel) $ \i ->
+generatePixels :: Int -> Int -> (Int -> Int -> Int -> Word8) -> BS.ByteString
+generatePixels w h pixelFn = generatePixelData (w * h * bytesPerPixel) $ \i ->
   let pixIdx = i `div` bytesPerPixel
       channel = i `mod` bytesPerPixel
       x = pixIdx `mod` w

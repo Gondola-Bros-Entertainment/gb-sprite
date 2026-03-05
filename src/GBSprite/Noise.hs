@@ -13,9 +13,8 @@ module GBSprite.Noise
   )
 where
 
-import qualified Data.Vector.Storable as VS
 import Data.Word (Word8)
-import GBSprite.Canvas (Canvas (..))
+import GBSprite.Canvas (Canvas (..), generatePixelData)
 import GBSprite.Color (Color (..), lerp)
 
 -- | Generate a grayscale value noise canvas.
@@ -38,7 +37,7 @@ valueNoise w h seed scale =
 -- instead of black and white.
 valueNoiseColor :: Int -> Int -> Int -> Double -> Color -> Color -> Canvas
 valueNoiseColor w h seed scale startColor endColor =
-  let pixels = VS.generate (w * h * bytesPerPixel) $ \i ->
+  let pixels = generatePixelData (w * h * bytesPerPixel) $ \i ->
         let pixIdx = i `div` bytesPerPixel
             channel = i `mod` bytesPerPixel
             x = pixIdx `mod` w
@@ -56,7 +55,7 @@ valueNoiseColor w h seed scale startColor endColor =
 fbm :: Int -> Int -> Int -> Int -> Double -> Canvas
 fbm w h seed octaves scale =
   let clampedOctaves = max 1 octaves
-      pixels = VS.generate (w * h * bytesPerPixel) $ \i ->
+      pixels = generatePixelData (w * h * bytesPerPixel) $ \i ->
         let pixIdx = i `div` bytesPerPixel
             channel = i `mod` bytesPerPixel
             x = pixIdx `mod` w

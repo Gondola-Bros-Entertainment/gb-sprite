@@ -13,9 +13,8 @@ module GBSprite.Dither
 where
 
 import Data.List (foldl')
-import qualified Data.Vector.Storable as VS
 import Data.Word (Word8)
-import GBSprite.Canvas (Canvas (..), getPixel)
+import GBSprite.Canvas (Canvas (..), generatePixelData, getPixel)
 import GBSprite.Color (Color (..))
 import GBSprite.Palette (Palette (..))
 
@@ -39,7 +38,7 @@ orderedDither _ (Palette []) canvas = canvas
 orderedDither matrix palette canvas =
   let w = cWidth canvas
       h = cHeight canvas
-      pixels = VS.generate (w * h * bytesPerPixel) $ \i ->
+      pixels = generatePixelData (w * h * bytesPerPixel) $ \i ->
         let pixIdx = i `div` bytesPerPixel
             channel = i `mod` bytesPerPixel
             x = pixIdx `mod` w

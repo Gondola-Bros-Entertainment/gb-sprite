@@ -14,8 +14,7 @@ import qualified Data.ByteString as BS
 import qualified Data.ByteString.Builder as B
 import qualified Data.ByteString.Lazy as BL
 import Data.Int (Int32)
-import qualified Data.Vector.Storable as VS
-import Data.Word (Word32, Word8)
+import Data.Word (Word32)
 import GBSprite.Canvas (Canvas (..))
 
 -- | Write a canvas to a BMP file.
@@ -53,16 +52,16 @@ encodeBmp (Canvas w h pixels) =
    in B.toLazyByteString (header <> pixelData)
 
 -- | Encode one row of pixels (RGBA -> BGRA, with padding).
-encodeRow :: Int -> Int -> VS.Vector Word8 -> Int -> B.Builder
+encodeRow :: Int -> Int -> BS.ByteString -> Int -> B.Builder
 encodeRow w paddedRowSize pixels y =
   let rowStart = y * w * bmpBytesPerPixel
       rowBytes =
         mconcat
           [ let idx = rowStart + x * bmpBytesPerPixel
-                r = pixels VS.! idx
-                g = pixels VS.! (idx + 1)
-                b = pixels VS.! (idx + 2)
-                a = pixels VS.! (idx + 3)
+                r = BS.index pixels idx
+                g = BS.index pixels (idx + 1)
+                b = BS.index pixels (idx + 2)
+                a = BS.index pixels (idx + 3)
              in B.word8 b <> B.word8 g <> B.word8 r <> B.word8 a
           | x <- [0 .. w - 1]
           ]
