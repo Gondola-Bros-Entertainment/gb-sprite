@@ -8,7 +8,7 @@ description:
   and visual effects. No external image libraries — just math.
   Generate sprites, draw primitives, compose layers, pack sprite
   sheets, render bitmap text, and create procedural VFX. Export
-  to BMP natively, or enable the @juicy-pixels@ flag for PNG.
+  to BMP and PNG natively.
 
 license:       BSD-3-Clause
 license-file:  LICENSE
