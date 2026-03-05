@@ -17,13 +17,6 @@
 - **`juicy-pixels` flag and `GBSprite.Export.PNG`** — replaced by native `GBSprite.PNG`.
 - **`vector` dependency** — pixel data now uses `bytestring` with `unsafeCreate`/`pokeByteOff` for O(n) generation.
 
-### Fixes
-
-- Fix BMP roundtrip test leaking temp files — tests now clean up after themselves.
-- Replace partial `!!` with safe indexing in BMP test.
-- Fix CI: run haddock before build to avoid stale `.hi` files causing 0% doc coverage.
-- Fix README: correct `encodeBmp` return type, add missing API sections (Palette, Sprite, Tilemap), add missing exported functions.
-
 ### Dependencies
 
 - `base`, `bytestring`, `zlib` — that's it. Down from `base`, `bytestring`, `vector`, optional `JuicyPixels`.
