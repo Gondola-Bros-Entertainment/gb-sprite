@@ -15,7 +15,7 @@
 ### Removed
 
 - **`juicy-pixels` flag and `GBSprite.Export.PNG`** — replaced by native `GBSprite.PNG`.
-- **`vector` dependency** — pixel data now uses `bytestring` with `unsafeCreate`/`pokeByteOff` for O(n) generation.
+- **`vector` dependency** — pixel data backed by strict `ByteString` instead of `Vector.Storable`. Same performance characteristics, fewer dependencies.
 
 ### Dependencies
 
