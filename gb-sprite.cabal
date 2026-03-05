@@ -25,11 +25,6 @@ source-repository head
   type:     git
   location: https://github.com/Gondola-Bros-Entertainment/gb-sprite.git
 
-flag juicy-pixels
-  description: Enable PNG export via JuicyPixels
-  default:     False
-  manual:      True
-
 library
   exposed-modules:
     GBSprite.Animation
@@ -44,6 +39,7 @@ library
     GBSprite.NineSlice
     GBSprite.Noise
     GBSprite.Palette
+    GBSprite.PNG
     GBSprite.Sheet
     GBSprite.Sprite
     GBSprite.Text
@@ -55,11 +51,8 @@ library
   build-depends:
     base        >=4.18 && <5,
     bytestring  >=0.11 && <0.13,
-    vector      >=0.13 && <0.14
-
-  if flag(juicy-pixels)
-    exposed-modules: GBSprite.Export.PNG
-    build-depends:   JuicyPixels >=3.3 && <3.5
+    vector      >=0.13 && <0.14,
+    zlib        >=0.6  && <0.8
 
   default-language: Haskell2010
   ghc-options:      -Wall -Wcompat

@@ -32,10 +32,10 @@ Companion to [gb-synth](https://github.com/Gondola-Bros-Entertainment/gb-synth) 
 - Nine-slice UI panel scaling
 - Ordered Bayer dithering for palette reduction
 - Tilemap rendering from sprite atlas
-- BMP export (32-bit BGRA, zero deps beyond bytestring)
-- Optional PNG export via JuicyPixels (`juicy-pixels` cabal flag)
+- BMP export (32-bit BGRA, raw header bytes)
+- PNG export (32-bit RGBA, zlib compressed)
 
-**Core dependencies:** `base`, `bytestring`, `vector` — that's it.
+**Core dependencies:** `base`, `bytestring`, `vector`, `zlib`.
 
 ---
 
@@ -60,8 +60,8 @@ src/GBSprite/
 ├── NineSlice.hs   UI panel scaling with border preservation
 ├── Dither.hs      Ordered Bayer dithering for palette reduction
 ├── BMP.hs         32-bit BGRA BMP export
-├── Export.hs      BMP export API (always available)
-└── Export/PNG.hs  PNG export via JuicyPixels (optional flag)
+├── PNG.hs         32-bit RGBA PNG export (zlib compressed)
+└── Export.hs      Unified export API (BMP + PNG)
 ```
 
 ### Pipeline
@@ -82,14 +82,6 @@ Add to your `.cabal` file:
 
 ```cabal
 build-depends: gb-sprite >= 0.2
-```
-
-For PNG export support:
-
-```cabal
-build-depends: gb-sprite >= 0.2
-
-flags: +juicy-pixels
 ```
 
 ### Generating sprites
@@ -316,10 +308,10 @@ renderTilemap :: SpriteSheet -> TilemapConfig -> Canvas     -- render grid from 
 ```haskell
 encodeBmp :: Canvas -> BL.ByteString               -- pure: canvas → BMP bytes (lazy)
 writeBmp  :: FilePath -> Canvas -> IO ()            -- write BMP file
+encodePng :: Canvas -> BL.ByteString               -- pure: canvas → PNG bytes (lazy)
+writePng  :: FilePath -> Canvas -> IO ()            -- write PNG file
 exportBmp :: FilePath -> Canvas -> IO ()            -- re-export of writeBmp (GBSprite.Export)
-
--- With juicy-pixels flag (GBSprite.Export.PNG):
-exportPng :: FilePath -> Canvas -> IO ()            -- write PNG file
+exportPng :: FilePath -> Canvas -> IO ()            -- re-export of writePng (GBSprite.Export)
 ```
 
 ---

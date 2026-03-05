@@ -17,6 +17,7 @@ import GBSprite.Draw (drawArc, drawBezier, drawEllipse, drawPolygon, drawRoundRe
 import GBSprite.Gradient (diagonalGradient, linearGradient, radialGradient)
 import GBSprite.NineSlice (NineSlice (..), nineSlice, renderNineSlice)
 import GBSprite.Noise (fbm, valueNoise, valueNoiseColor)
+import GBSprite.PNG (encodePng, writePng)
 import GBSprite.Palette (Palette (..), fromColors, gameboy, grayscale4, grayscale8, nes, paletteColor, paletteSwap)
 import GBSprite.Sheet (SheetEntry (..), SpriteSheet (..), packSheet)
 import GBSprite.Sprite (BoundingBox (..), Sprite (..), frameCount, getFrame, multiFrame, singleFrame, spriteHeight, spriteWidth)
@@ -82,6 +83,7 @@ main = do
   putStrLn "gb-sprite tests"
   putStrLn (replicate 40 '-')
   bmpTests <- testBmpRoundtrip
+  pngTests <- testPngRoundtrip
   runTests
     ( testColor
         ++ testColorNamed
@@ -108,6 +110,8 @@ main = do
         ++ testVFXSparks
         ++ bmpTests
         ++ testBmpEncode
+        ++ pngTests
+        ++ testPngEncode
         ++ testDraw
         ++ testDrawAdvanced
         ++ testEllipse
@@ -1309,6 +1313,81 @@ testBmpEncode =
        in assertTrue "bmp differ" (bmp1 /= bmp2)
     )
   ]
+
+-- ---------------------------------------------------------------------------
+-- PNG tests
+-- ---------------------------------------------------------------------------
+
+-- | PNG 8-byte file signature.
+pngMagic :: [Word8]
+pngMagic = [137, 80, 78, 71, 13, 10, 26, 10]
+
+testPngRoundtrip :: IO [(String, TestResult)]
+testPngRoundtrip = do
+  let canvas = fillRect (newCanvas 4 4 transparent) 0 0 4 4 red
+  (path, tmpHandle) <- openTempFile "." "gb-sprite-test.png"
+  hClose tmpHandle
+  writePng path canvas
+  raw <- BS.readFile path
+  removeFile path
+  let bytes = BS.unpack raw
+  return
+    [ ( "PNG starts with correct signature",
+        assertEqual "PNG magic" pngMagic (take 8 bytes)
+      ),
+      ( "PNG file is non-empty",
+        assertTrue "PNG non-empty" (length bytes > 8)
+      ),
+      ( "PNG contains IHDR chunk",
+        -- After 8-byte signature: 4 bytes length + "IHDR"
+        let chunkType = take 4 (drop 12 bytes)
+         in assertEqual "IHDR" [73, 72, 68, 82] chunkType
+      ),
+      ( "PNG IHDR width is 4",
+        let widthBytes = take 4 (drop 16 bytes)
+         in assertEqual "PNG width" 4 (fromBE32 widthBytes)
+      ),
+      ( "PNG IHDR height is 4",
+        let heightBytes = take 4 (drop 20 bytes)
+         in assertEqual "PNG height" 4 (fromBE32 heightBytes)
+      )
+    ]
+
+testPngEncode :: [(String, TestResult)]
+testPngEncode =
+  [ ( "encodePng produces non-empty output",
+      let bytes = encodePng (newCanvas 2 2 red)
+       in assertTrue "png non-empty" (BL.length bytes > 0)
+    ),
+    ( "encodePng starts with PNG signature",
+      let bytes = BL.unpack (encodePng (newCanvas 2 2 red))
+       in assertEqual "png magic" pngMagic (take 8 bytes)
+    ),
+    ( "encodePng 1x1 canvas",
+      let bytes = encodePng (newCanvas 1 1 red)
+       in assertTrue "png 1x1" (BL.length bytes > 8)
+    ),
+    ( "encodePng different canvases differ",
+      let png1 = encodePng (newCanvas 2 2 red)
+          png2 = encodePng (newCanvas 2 2 blue)
+       in assertTrue "png differ" (png1 /= png2)
+    ),
+    ( "encodePng ends with IEND chunk",
+      let bytes = BL.unpack (encodePng (newCanvas 2 2 red))
+          iendTrailer = drop (length bytes - 12) bytes
+       in -- IEND: length=0, type=IEND, CRC32 of "IEND"
+          assertEqual "IEND length" [0, 0, 0, 0] (take 4 iendTrailer)
+    )
+  ]
+
+-- | Decode a big-endian 32-bit integer from a byte list.
+fromBE32 :: [Word8] -> Int
+fromBE32 (a : b : c : d : _) =
+  fromIntegral a * 16777216
+    + fromIntegral b * 65536
+    + fromIntegral c * 256
+    + fromIntegral d
+fromBE32 _ = 0
 
 -- ---------------------------------------------------------------------------
 -- Draw tests
