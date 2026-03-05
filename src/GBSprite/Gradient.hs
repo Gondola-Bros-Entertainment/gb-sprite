@@ -1,6 +1,6 @@
 -- | Gradient generation for backgrounds and effects.
 --
--- Pure gradient constructors that produce 'Canvas' values.
+-- Pure gradient constructors that produce t'Canvas' values.
 -- Useful for backgrounds, UI elements, and color ramps.
 module GBSprite.Gradient
   ( -- * Gradients

@@ -1,6 +1,6 @@
 -- | Higher-level drawing primitives.
 --
--- Builds on 'GBSprite.Canvas' with thick lines, polygons,
+-- Builds on "GBSprite.Canvas" with thick lines, polygons,
 -- ellipses, arcs, Bezier curves, and rounded rectangles.
 module GBSprite.Draw
   ( -- * Thick lines

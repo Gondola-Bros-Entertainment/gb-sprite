@@ -36,7 +36,7 @@ data NineSlice = NineSlice
 
 -- | Define a nine-slice from a canvas and border insets.
 --
--- @nineSlice canvas left right top bottom@ creates a 'NineSlice'
+-- @nineSlice canvas left right top bottom@ creates a t'NineSlice'
 -- with the specified border widths. The insets must be non-negative
 -- and fit within the canvas dimensions.
 nineSlice :: Canvas -> Int -> Int -> Int -> Int -> NineSlice

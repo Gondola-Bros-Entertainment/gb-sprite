@@ -1,6 +1,6 @@
 -- | 2D pixel grid backed by 'Data.Vector.Storable'.
 --
--- A 'Canvas' is a mutable-width x height RGBA pixel buffer. All drawing
+-- A t'Canvas' is a mutable-width x height RGBA pixel buffer. All drawing
 -- operations are pure @Canvas -> Canvas@ transforms. Coordinates use
 -- @(Int, Int)@ with origin at top-left, x increasing right, y increasing
 -- down.
@@ -79,7 +79,7 @@ pixelIndex w x y = (y * w + x) * bytesPerPixel
 inBounds :: Canvas -> Int -> Int -> Bool
 inBounds (Canvas w h _) x y = x >= 0 && x < w && y >= 0 && y < h
 
--- | Read the color at @(x, y)@. Returns 'transparent' for out-of-bounds.
+-- | Read the color at @(x, y)@. Returns @transparent@ for out-of-bounds.
 getPixel :: Canvas -> Int -> Int -> Color
 getPixel canvas x y
   | inBounds canvas x y =
@@ -294,6 +294,6 @@ pixelByte (Color r g b a) _w idx =
     2 -> b
     _ -> a
 
--- | Convert a 'Color' to its byte representation.
+-- | Convert a t'Color' to its byte representation.
 colorToBytes :: Color -> [Word8]
 colorToBytes (Color r g b a) = [r, g, b, a]

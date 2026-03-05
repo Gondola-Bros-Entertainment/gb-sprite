@@ -1,6 +1,6 @@
 -- | Procedural visual effect generators.
 --
--- Each generator produces a list of 'Canvas' frames representing
+-- Each generator produces a list of t'Canvas' frames representing
 -- an animated effect. All generators are pure — no randomness
 -- beyond deterministic seeds.
 module GBSprite.VFX
