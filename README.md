@@ -1,6 +1,6 @@
 <div align="center">
 <h1>gb-sprite</h1>
-<p><strong>Procedural 2D Sprite & VFX Generation</strong></p>
+<p><strong>Pure Haskell 2D Raster Graphics Engine</strong></p>
 <p>Pure Haskell — no image files, no textures, no asset pipeline. Just math.</p>
 <p><a href="#overview">Overview</a> · <a href="#architecture">Architecture</a> · <a href="#usage">Usage</a> · <a href="#api">API</a> · <a href="#example">Example</a></p>
 <p>
@@ -16,7 +16,7 @@
 
 ## Overview
 
-gb-sprite is a pure Haskell library for procedurally generating 2D sprites, animations, and visual effects. Define pixel art, VFX, and sprite sheets programmatically — render to BMP or PNG with zero external image dependencies.
+gb-sprite is a pure Haskell 2D raster graphics engine for procedurally generating sprites, animations, and visual effects. Draw primitives, compose layers, apply filters and noise, render isometric tilemaps, pack sprite sheets, and grade colors — all without external image libraries. Export to BMP and PNG natively.
 
 Companion to [gb-synth](https://github.com/Gondola-Bros-Entertainment/gb-synth) (procedural audio) and [gb-vector](https://github.com/Gondola-Bros-Entertainment/gb-vector) (SVG generation).
 

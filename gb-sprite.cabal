@@ -2,13 +2,14 @@ cabal-version: 3.0
 name:          gb-sprite
 version:       0.5.1.0
 stability:     experimental
-synopsis:      Procedural 2D sprite and VFX generation
+synopsis:      Pure Haskell 2D raster graphics engine
 description:
-  A pure Haskell library for generating 2D sprites, animations,
-  and visual effects. No external image libraries — just math.
-  Generate sprites, draw primitives, compose layers, pack sprite
-  sheets, render bitmap text, and create procedural VFX. Export
-  to BMP and PNG natively.
+  A pure Haskell 2D raster graphics engine for procedurally
+  generating sprites, animations, and visual effects. Drawing
+  primitives, transforms, compositing with blend modes, image
+  filters, procedural noise, isometric projection, sprite sheets,
+  bitmap text, color grading, and dithering — no external image
+  libraries. Export to BMP and PNG natively.
 
 license:       BSD-3-Clause
 license-file:  LICENSE
