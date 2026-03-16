@@ -16,24 +16,28 @@
 
 ## Overview
 
-gb-sprite is a pure Haskell library for procedurally generating 2D sprites, animations, and visual effects. Define pixel art, VFX, and sprite sheets programmatically — render to BMP with zero external image dependencies.
+gb-sprite is a pure Haskell library for procedurally generating 2D sprites, animations, and visual effects. Define pixel art, VFX, and sprite sheets programmatically — render to BMP or PNG with zero external image dependencies.
 
 Companion to [gb-synth](https://github.com/Gondola-Bros-Entertainment/gb-synth) (procedural audio) and [gb-vector](https://github.com/Gondola-Bros-Entertainment/gb-vector) (SVG generation).
 
 **Features:**
-- ByteString-backed RGBA canvas with drawing primitives (lines, circles, polygons, Bezier curves)
-- Transforms: flip, rotate, scale, outline, drop shadow
-- Alpha-blended compositing and layering
+- ByteString-backed RGBA canvas with drawing primitives (lines, circles, polygons, Bezier curves, Catmull-Rom splines, anti-aliased lines)
+- Transforms: flip, rotate (90/180/270/arbitrary), scale (nearest/bilinear), shear, outline, drop shadow
+- Alpha-blended compositing with blend modes (multiply, screen, overlay, additive, soft light, difference)
+- Masking and canvas-wide opacity
+- Isometric projection: coordinate conversion, diamond hit testing, depth sorting, tilemap rendering
+- Color adjustments: brightness, contrast, saturation, hue shift, tinting, grayscale, invert, posterize, threshold, sepia
+- HSL/HSV color space conversions
+- Image filters: box blur, Gaussian blur, sharpen, edge detection, bloom
 - Sprite sheet packing (shelf bin packing) with metadata
 - Built-in 8x8 pixel font (full printable ASCII)
 - Procedural VFX generators (explosion, ring, glow, trail, flash, sparks)
-- Procedural noise (value noise, fractal Brownian motion)
+- Procedural noise (value noise, Perlin noise, Worley/cellular noise, FBM, turbulence)
 - Gradients (linear, radial, diagonal)
 - Nine-slice UI panel scaling
 - Ordered Bayer dithering for palette reduction
-- Tilemap rendering from sprite atlas
-- BMP export (32-bit BGRA, raw header bytes)
-- PNG export (32-bit RGBA, zlib compressed)
+- Palette extraction (median cut) and color quantization
+- BMP and PNG import/export (32-bit RGBA, native — no external image libraries)
 
 **Core dependencies:** `base`, `bytestring`, `zlib`.
 
@@ -43,22 +47,26 @@ Companion to [gb-synth](https://github.com/Gondola-Bros-Entertainment/gb-synth) 
 
 ```
 src/GBSprite/
-├── Color.hs       RGBA type, named colors, lerp, multiply, alpha blend
-├── Canvas.hs      2D pixel grid (strict ByteString), drawing primitives
-├── Draw.hs        Thick lines, polygons, ellipses, arcs, Bezier curves
-├── Palette.hs     Indexed palettes (gameboy, NES), palette swap
-├── Sprite.hs      Named sprite with origin, frames, bounding box
-├── Animation.hs   Loop/Once/PingPong frame sequencing
-├── Transform.hs   Flip, rotate, scale, outline, drop shadow
-├── Compose.hs     Alpha-blended layering and stamping
+├── Color.hs       RGBA type, HSL/HSV, named colors, lerp, multiply, alpha blend, color transforms
+├── Canvas.hs      2D pixel grid (strict ByteString), drawing primitives, flood fill
+├── Draw.hs        Thick lines, polygons, ellipses, arcs, Bezier/Catmull-Rom curves, AA lines
+├── Adjust.hs      Canvas-wide color adjustments (brightness, contrast, saturation, hue, sepia, etc.)
+├── Filter.hs      Convolution filters (box/Gaussian blur, sharpen, edge detection, bloom)
+├── Palette.hs     Indexed palettes, palette swap, extraction (median cut), quantization
+├── Sprite.hs      Named sprite with origin, frames, bounding box, mirroring, trimming
+├── Animation.hs   Loop/Once/PingPong frame sequencing, frame blending
+├── Transform.hs   Flip, rotate (90/180/270/arbitrary), scale (nearest/bilinear), shear, outline, shadow
+├── Compose.hs     Alpha-blended layering, blend modes, masking
 ├── Sheet.hs       Shelf bin packing into sprite atlas
 ├── Text.hs        Built-in 8x8 pixel font rendering
+├── Isometric.hs   2:1 isometric projection, coordinate conversion, hit testing, depth sorting
 ├── Tilemap.hs     Tile-based map rendering from atlas
-├── VFX.hs         Procedural effects (explosion, ring, glow, trail, etc.)
-├── Noise.hs       Value noise, fractal Brownian motion
+├── VFX.hs         Procedural effects (explosion, ring, glow, trail, flash, sparks)
+├── Noise.hs       Value noise, Perlin noise, Worley noise, FBM, turbulence
 ├── Gradient.hs    Linear, radial, diagonal gradients
 ├── NineSlice.hs   UI panel scaling with border preservation
 ├── Dither.hs      Ordered Bayer dithering for palette reduction
+├── Import.hs      BMP and PNG file decoding
 ├── BMP.hs         32-bit BGRA BMP export
 ├── PNG.hs         32-bit RGBA PNG export (zlib compressed)
 └── Export.hs      Unified export API (BMP + PNG)
@@ -70,6 +78,8 @@ src/GBSprite/
 Canvas → Draw/Transform/Compose → Sprite → Animation → Sheet (atlas) → BMP/PNG
                                                   ↗
 VFX generators → [Canvas] frames ─────────────────┘
+                                                  ↗
+Import (BMP/PNG) → Canvas ────────────────────────┘
 ```
 
 ---
@@ -81,7 +91,7 @@ VFX generators → [Canvas] frames ───────────────
 Add to your `.cabal` file:
 
 ```cabal
-build-depends: gb-sprite >= 0.3
+build-depends: gb-sprite >= 0.4
 ```
 
 ### Generating sprites
@@ -105,6 +115,8 @@ main = do
 
 ```haskell
 data Color = Color { colorR, colorG, colorB, colorA :: !Word8 }
+data HSL = HSL { hslH, hslS, hslL :: !Double }
+data HSV = HSV { hsvH, hsvS, hsvV :: !Double }
 
 -- Named colors
 red, green, blue, white, black, transparent :: Color
@@ -115,6 +127,21 @@ multiply   :: Color -> Color -> Color              -- component-wise multiply
 alphaBlend :: Color -> Color -> Color              -- Porter-Duff "over"
 withAlpha  :: Word8 -> Color -> Color              -- replace alpha channel
 scaleAlpha :: Double -> Color -> Color             -- scale alpha channel
+
+-- Color space
+toHSL  :: Color -> HSL
+fromHSL :: HSL -> Color
+toHSV  :: Color -> HSV
+fromHSV :: HSV -> Color
+
+-- Color transforms
+tintColor      :: Color -> Color -> Color           -- multiply RGB channels
+invertColor    :: Color -> Color                    -- negate RGB
+grayscaleColor :: Color -> Color                    -- BT.709 luminance
+brightenColor  :: Double -> Color -> Color          -- toward white/black
+contrastColor  :: Double -> Color -> Color          -- scale from midpoint
+saturateColor  :: Double -> Color -> Color          -- boost/reduce saturation
+shiftHueColor  :: Double -> Color -> Color          -- rotate hue by degrees
 ```
 
 ### Canvas
@@ -123,6 +150,7 @@ scaleAlpha :: Double -> Color -> Color             -- scale alpha channel
 data Canvas = Canvas { cWidth :: !Int, cHeight :: !Int, cPixels :: !BS.ByteString }
 
 newCanvas  :: Int -> Int -> Color -> Canvas        -- blank canvas filled with color
+fromPixels :: Int -> Int -> [Color] -> Canvas      -- from color list (row-major)
 setPixel   :: Canvas -> Int -> Int -> Color -> Canvas
 getPixel   :: Canvas -> Int -> Int -> Color
 drawLine   :: Canvas -> Int -> Int -> Int -> Int -> Color -> Canvas  -- Bresenham
@@ -131,20 +159,29 @@ fillRect   :: Canvas -> Int -> Int -> Int -> Int -> Color -> Canvas
 drawCircle :: Canvas -> Int -> Int -> Int -> Color -> Canvas
 fillCircle :: Canvas -> Int -> Int -> Int -> Color -> Canvas
 floodFill  :: Canvas -> Int -> Int -> Color -> Canvas
+crop            :: Int -> Int -> Int -> Int -> Canvas -> Canvas
+trimTransparent :: Canvas -> Canvas
+canvasOpacity   :: Double -> Canvas -> Canvas
+mapPixels       :: (Color -> Color) -> Canvas -> Canvas
+pixelFold       :: (a -> Int -> Int -> Color -> a) -> a -> Canvas -> a
 ```
 
 ### Draw
 
 ```haskell
-drawThickLine :: Canvas -> Int -> Int -> Int -> Int -> Int -> Color -> Canvas
-drawPolygon   :: Canvas -> [(Int, Int)] -> Color -> Canvas
-fillPolygon   :: Canvas -> [(Int, Int)] -> Color -> Canvas  -- scanline fill
-drawEllipse   :: Canvas -> Int -> Int -> Int -> Int -> Color -> Canvas
-fillEllipse   :: Canvas -> Int -> Int -> Int -> Int -> Color -> Canvas
-drawArc       :: Canvas -> Int -> Int -> Int -> Int -> Double -> Double -> Color -> Canvas
-drawBezier    :: Canvas -> (Int,Int) -> (Int,Int) -> (Int,Int) -> Color -> Canvas
-drawRoundRect :: Canvas -> Int -> Int -> Int -> Int -> Int -> Color -> Canvas
-fillRoundRect :: Canvas -> Int -> Int -> Int -> Int -> Int -> Color -> Canvas
+drawThickLine  :: Canvas -> Int -> Int -> Int -> Int -> Int -> Color -> Canvas
+drawPolygon    :: Canvas -> [(Int, Int)] -> Color -> Canvas
+fillPolygon    :: Canvas -> [(Int, Int)] -> Color -> Canvas  -- scanline fill
+drawEllipse    :: Canvas -> Int -> Int -> Int -> Int -> Color -> Canvas
+fillEllipse    :: Canvas -> Int -> Int -> Int -> Int -> Color -> Canvas
+drawArc        :: Canvas -> Int -> Int -> Int -> Int -> Double -> Double -> Color -> Canvas
+drawBezier     :: Canvas -> (Int,Int) -> (Int,Int) -> (Int,Int) -> Color -> Canvas
+drawCubicBezier :: Canvas -> (Int,Int) -> (Int,Int) -> (Int,Int) -> (Int,Int) -> Color -> Canvas
+drawCatmullRom :: Canvas -> [(Int, Int)] -> Color -> Canvas
+drawAALine     :: Canvas -> Int -> Int -> Int -> Int -> Color -> Canvas  -- Wu's algorithm
+patternFill    :: Canvas -> Int -> Int -> Int -> Int -> Canvas -> Canvas
+drawRoundRect  :: Canvas -> Int -> Int -> Int -> Int -> Int -> Color -> Canvas
+fillRoundRect  :: Canvas -> Int -> Int -> Int -> Int -> Int -> Color -> Canvas
 ```
 
 ### Transform
@@ -152,126 +189,135 @@ fillRoundRect :: Canvas -> Int -> Int -> Int -> Int -> Int -> Color -> Canvas
 ```haskell
 flipH, flipV         :: Canvas -> Canvas
 rotate90, rotate180, rotate270 :: Canvas -> Canvas
-scaleNearest :: Int -> Canvas -> Canvas            -- nearest-neighbor upscale
-outline      :: Color -> Canvas -> Canvas          -- outline non-transparent pixels
-dropShadow   :: Int -> Int -> Color -> Canvas -> Canvas
+rotateArbitrary :: Double -> Canvas -> Canvas        -- degrees, bilinear interpolation
+scaleNearest    :: Int -> Canvas -> Canvas            -- nearest-neighbor upscale
+scaleBilinear   :: Double -> Canvas -> Canvas         -- bilinear up/down
+scaleTo         :: Int -> Int -> Canvas -> Canvas     -- target dimensions, bilinear
+shearH, shearV  :: Double -> Canvas -> Canvas         -- horizontal/vertical shear
+outline         :: Color -> Canvas -> Canvas
+dropShadow      :: Int -> Int -> Color -> Canvas -> Canvas
 ```
 
 ### Compose
 
 ```haskell
-stamp      :: Canvas -> Int -> Int -> Canvas -> Canvas  -- direct overwrite
-stampAlpha :: Canvas -> Int -> Int -> Canvas -> Canvas   -- alpha blended
-overlay    :: Canvas -> Canvas -> Canvas                 -- same-size blend
-overlayAt  :: Canvas -> Int -> Int -> Canvas -> Canvas   -- offset blend
+data BlendMode = BlendMultiply | BlendScreen | BlendOverlay
+               | BlendAdditive | BlendSoftLight | BlendDifference
+
+stamp        :: Canvas -> Int -> Int -> Canvas -> Canvas  -- direct overwrite
+stampAlpha   :: Canvas -> Int -> Int -> Canvas -> Canvas   -- alpha blended
+overlay      :: Canvas -> Canvas -> Canvas                 -- same-size blend
+overlayAt    :: Canvas -> Int -> Int -> Canvas -> Canvas   -- offset blend
+blendCompose :: BlendMode -> Canvas -> Int -> Int -> Canvas -> Canvas
+maskCanvas   :: Canvas -> Canvas -> Canvas                 -- alpha masking
+```
+
+### Adjust
+
+```haskell
+grayscale        :: Canvas -> Canvas
+invertColors     :: Canvas -> Canvas
+applyTint        :: Color -> Canvas -> Canvas
+adjustBrightness :: Double -> Canvas -> Canvas
+adjustContrast   :: Double -> Canvas -> Canvas
+adjustSaturation :: Double -> Canvas -> Canvas
+shiftHue         :: Double -> Canvas -> Canvas
+remapColor       :: Color -> Color -> Canvas -> Canvas
+remapColors      :: [(Color, Color)] -> Canvas -> Canvas
+posterize        :: Int -> Canvas -> Canvas
+threshold        :: Word8 -> Canvas -> Canvas
+sepia            :: Canvas -> Canvas
+```
+
+### Filter
+
+```haskell
+boxBlur      :: Int -> Canvas -> Canvas              -- separable box blur
+gaussianBlur :: Int -> Canvas -> Canvas              -- 3-pass box blur approximation
+sharpen      :: Canvas -> Canvas                     -- unsharp mask
+edgeDetect   :: Canvas -> Canvas                     -- Sobel gradient magnitude
+bloom        :: Int -> Double -> Canvas -> Canvas    -- bright extraction + blur + additive
+```
+
+### Isometric
+
+```haskell
+data IsoConfig = IsoConfig { isoTileWidth :: !Int, isoTileHeight :: !Int }
+
+defaultIsoConfig :: IsoConfig                        -- 64x32 standard 2:1
+
+worldToScreen    :: IsoConfig -> Int -> Int -> (Int, Int)
+screenToWorld    :: IsoConfig -> Int -> Int -> (Int, Int)
+pointInDiamond   :: IsoConfig -> Int -> Int -> Int -> Int -> Bool
+isoDepthCompare  :: (Int, Int) -> (Int, Int) -> Ordering
+drawDiamond      :: Canvas -> IsoConfig -> Int -> Int -> Color -> Canvas
+fillDiamond      :: Canvas -> IsoConfig -> Int -> Int -> Color -> Canvas
+renderIsoMap     :: IsoConfig -> [(Int, Canvas)] -> [[Int]] -> Canvas
 ```
 
 ### Noise
 
-Deterministic procedural noise for textures and terrain:
-
 ```haskell
-valueNoise      :: Int -> Int -> Int -> Double -> Canvas              -- width, height, seed, scale
-valueNoiseColor :: Int -> Int -> Int -> Double -> Color -> Color -> Canvas  -- noise between two colors
-fbm             :: Int -> Int -> Int -> Int -> Double -> Canvas       -- fractal Brownian motion
+valueNoise      :: Int -> Int -> Int -> Double -> Canvas
+valueNoiseColor :: Int -> Int -> Int -> Double -> Color -> Color -> Canvas
+fbm             :: Int -> Int -> Int -> Int -> Double -> Canvas
+perlinNoise     :: Int -> Int -> Int -> Double -> Canvas
+worleyNoise     :: Int -> Int -> Int -> Int -> Double -> Canvas
+turbulence      :: Int -> Int -> Int -> Int -> Double -> Canvas
 ```
 
 ### Gradient
 
 ```haskell
-linearGradient   :: Int -> Int -> Color -> Color -> Bool -> Canvas  -- horizontal or vertical
-radialGradient   :: Int -> Int -> Int -> Int -> Int -> Color -> Color -> Canvas  -- center, radius
-diagonalGradient :: Int -> Int -> Color -> Color -> Canvas          -- top-left to bottom-right
+linearGradient   :: Int -> Int -> Color -> Color -> Bool -> Canvas
+radialGradient   :: Int -> Int -> Int -> Int -> Int -> Color -> Color -> Canvas
+diagonalGradient :: Int -> Int -> Color -> Color -> Canvas
 ```
 
 ### NineSlice
-
-Scale UI panels while preserving borders:
 
 ```haskell
 data NineSlice = NineSlice
   { nsCanvas :: !Canvas, nsLeft :: !Int, nsRight :: !Int, nsTop :: !Int, nsBottom :: !Int }
 
-nineSlice       :: Canvas -> Int -> Int -> Int -> Int -> NineSlice  -- define border regions
-renderNineSlice :: NineSlice -> Int -> Int -> Canvas                -- render at target size
+nineSlice       :: Canvas -> Int -> Int -> Int -> Int -> NineSlice
+renderNineSlice :: NineSlice -> Int -> Int -> Canvas
 ```
 
 ### Palette
-
-Indexed color palettes for retro-style coloring and palette swaps:
 
 ```haskell
 newtype Palette = Palette { paletteColors :: [Color] }
 
 -- Built-in palettes
-grayscale4, grayscale8 :: Palette            -- 4/8-shade grayscale ramps
-gameboy              :: Palette              -- authentic DMG green palette
-nes                  :: Palette              -- 16-color NES-inspired palette
+grayscale4, grayscale8 :: Palette
+gameboy              :: Palette
+nes                  :: Palette
 
 -- Operations
-fromColors   :: [Color] -> Palette           -- build palette from color list
-paletteColor :: Palette -> Int -> Color      -- look up color by index (clamped)
-paletteSwap  :: Palette -> Palette -> Color -> Color  -- remap source to destination
+fromColors     :: [Color] -> Palette
+paletteColor   :: Palette -> Int -> Color
+paletteSwap    :: Palette -> Palette -> Color -> Color
+paletteLerp    :: Double -> Palette -> Palette -> Palette
+extractPalette :: Int -> Canvas -> Palette            -- median cut extraction
+quantizeColor  :: Palette -> Color -> Color
 ```
 
 ### Sprite
-
-Named multi-frame images with origin and bounding box:
 
 ```haskell
 data Sprite = Sprite
   { spriteName :: !String, spriteOriginX :: !Int, spriteOriginY :: !Int
   , spriteFrames :: ![Canvas], spriteBounds :: !(Maybe BoundingBox) }
 
-data BoundingBox = BoundingBox
-  { bbX :: !Int, bbY :: !Int, bbWidth :: !Int, bbHeight :: !Int }
-
-singleFrame  :: String -> Canvas -> Sprite                 -- single-frame at origin (0,0)
-multiFrame   :: String -> Int -> Int -> [Canvas] -> Sprite -- name, originX, originY, frames
+singleFrame  :: String -> Canvas -> Sprite
+multiFrame   :: String -> Int -> Int -> [Canvas] -> Sprite
 spriteWidth  :: Sprite -> Int
 spriteHeight :: Sprite -> Int
 frameCount   :: Sprite -> Int
-getFrame     :: Sprite -> Int -> Maybe Canvas              -- safe index lookup
-```
-
-### Dither
-
-Ordered dithering for retro palette reduction:
-
-```haskell
-data DitherMatrix = Bayer2 | Bayer4 | Bayer8
-
-orderedDither :: DitherMatrix -> Palette -> Canvas -> Canvas  -- reduce to palette with dithering
-```
-
-### Sheet
-
-```haskell
-data SpriteSheet = SpriteSheet { sheetCanvas :: !Canvas, sheetEntries :: ![SheetEntry] }
-data SheetEntry  = SheetEntry  { entryName :: !String, entryX, entryY, entryWidth, entryHeight :: !Int }
-
-packSheet :: Int -> [(String, Canvas)] -> SpriteSheet   -- shelf bin packing
-```
-
-### Text
-
-```haskell
-defaultFont :: Font                                     -- built-in 8x8 pixel font
-renderText  :: Font -> Color -> String -> Canvas
-renderChar  :: Font -> Color -> Char -> Canvas
-textWidth   :: Font -> String -> Int
-textHeight  :: Font -> Int
-```
-
-### VFX
-
-```haskell
-explosionFrames  :: ExplosionConfig -> [Canvas]   -- radial particle burst
-ringExpandFrames :: RingConfig -> [Canvas]         -- expanding ring
-glowPulseFrames  :: GlowConfig -> [Canvas]        -- pulsing aura
-trailFrames      :: TrailConfig -> [Canvas]        -- fading trail
-flashFrames      :: Int -> Color -> [Canvas]       -- solid color fade-out
-sparksFrames     :: SparksConfig -> [Canvas]       -- directional spark burst
+getFrame     :: Sprite -> Int -> Maybe Canvas
+mirrorSprite :: Sprite -> Sprite
+trimSprite   :: Sprite -> Sprite
 ```
 
 ### Animation
@@ -282,36 +328,82 @@ data LoopMode = Loop | Once | PingPong
 data Animation = Animation
   { animFrameDelay :: !Int, animFrameCount :: !Int, animLoopMode :: !LoopMode }
 
-animation         :: Int -> Int -> LoopMode -> Animation -- delay, frame count, mode
-loopAnimation     :: Int -> Int -> Animation           -- delay, frame count
+animation         :: Int -> Int -> LoopMode -> Animation
+loopAnimation     :: Int -> Int -> Animation
 onceAnimation     :: Int -> Int -> Animation
 pingPongAnimation :: Int -> Int -> Animation
-animationFrame    :: Animation -> Int -> Int            -- animation, tick → frame index
-animationDone     :: Animation -> Int -> Bool           -- animation, tick → finished?
+animationFrame    :: Animation -> Int -> Int
+animationDone     :: Animation -> Int -> Bool
+blendFrames       :: Double -> Canvas -> Canvas -> Canvas
+```
+
+### Dither
+
+```haskell
+data DitherMatrix = Bayer2 | Bayer4 | Bayer8
+
+orderedDither :: DitherMatrix -> Palette -> Canvas -> Canvas
+```
+
+### Sheet
+
+```haskell
+data SpriteSheet = SpriteSheet { sheetCanvas :: !Canvas, sheetEntries :: ![SheetEntry] }
+data SheetEntry  = SheetEntry  { entryName :: !String, entryX, entryY, entryWidth, entryHeight :: !Int }
+
+packSheet :: Int -> [(String, Canvas)] -> SpriteSheet
+```
+
+### Text
+
+```haskell
+defaultFont :: Font
+renderText  :: Font -> Color -> String -> Canvas
+renderChar  :: Font -> Color -> Char -> Canvas
+textWidth   :: Font -> String -> Int
+textHeight  :: Font -> Int
+```
+
+### VFX
+
+```haskell
+explosionFrames  :: ExplosionConfig -> [Canvas]
+ringExpandFrames :: RingConfig -> [Canvas]
+glowPulseFrames  :: GlowConfig -> [Canvas]
+trailFrames      :: TrailConfig -> [Canvas]
+flashFrames      :: Int -> Color -> [Canvas]
+sparksFrames     :: SparksConfig -> [Canvas]
 ```
 
 ### Tilemap
-
-Tile-based map rendering from a sprite atlas:
 
 ```haskell
 data TilemapConfig = TilemapConfig
   { tmTileWidth :: !Int, tmTileHeight :: !Int
   , tmGridWidth :: !Int, tmGridHeight :: !Int
-  , tmTiles :: ![Int] }                                    -- row-major tile indices
+  , tmTiles :: ![Int] }
 
-renderTilemap :: SpriteSheet -> TilemapConfig -> Canvas     -- render grid from atlas
+renderTilemap :: SpriteSheet -> TilemapConfig -> Canvas
 ```
 
-### BMP / Export
+### Import
 
 ```haskell
-encodeBmp :: Canvas -> BL.ByteString               -- pure: canvas → BMP bytes (lazy)
-writeBmp  :: FilePath -> Canvas -> IO ()            -- write BMP file
-encodePng :: Canvas -> BL.ByteString               -- pure: canvas → PNG bytes (lazy)
-writePng  :: FilePath -> Canvas -> IO ()            -- write PNG file
-exportBmp :: FilePath -> Canvas -> IO ()            -- re-export of writeBmp (GBSprite.Export)
-exportPng :: FilePath -> Canvas -> IO ()            -- re-export of writePng (GBSprite.Export)
+readBmp   :: FilePath -> IO (Either String Canvas)
+decodeBmp :: BS.ByteString -> Either String Canvas
+readPng   :: FilePath -> IO (Either String Canvas)
+decodePng :: BL.ByteString -> Either String Canvas
+```
+
+### BMP / PNG / Export
+
+```haskell
+encodeBmp :: Canvas -> BL.ByteString
+writeBmp  :: FilePath -> Canvas -> IO ()
+encodePng :: Canvas -> BL.ByteString
+writePng  :: FilePath -> Canvas -> IO ()
+exportBmp :: FilePath -> Canvas -> IO ()
+exportPng :: FilePath -> Canvas -> IO ()
 ```
 
 ---
@@ -366,7 +458,7 @@ Requires [GHCup](https://www.haskell.org/ghcup/) with GHC >= 9.8.
 
 ```bash
 cabal build                              # Build library
-cabal test                               # Run all tests (366 pure tests)
+cabal test                               # Run all tests (591 pure tests)
 cabal build --ghc-options="-Werror"      # Warnings as errors
 cabal haddock                            # Generate docs
 ```

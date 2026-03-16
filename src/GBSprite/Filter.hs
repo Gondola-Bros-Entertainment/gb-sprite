@@ -314,10 +314,10 @@ extractBright threshByte canvas =
          in if channel == alphaChannel
               then src `unsafeIndex` (baseIdx + alphaChannel)
               else
-                let rVal = fromIntegral (src `unsafeIndex` baseIdx) :: Int
-                    gVal = fromIntegral (src `unsafeIndex` (baseIdx + 1)) :: Int
-                    bVal = fromIntegral (src `unsafeIndex` (baseIdx + 2)) :: Int
-                    lum = (rVal + gVal + bVal) `div` rgbChannelCount
+                let rVal = fromIntegral (src `unsafeIndex` baseIdx) :: Double
+                    gVal = fromIntegral (src `unsafeIndex` (baseIdx + 1)) :: Double
+                    bVal = fromIntegral (src `unsafeIndex` (baseIdx + 2)) :: Double
+                    lum = round (rVal * luminanceWeightR + gVal * luminanceWeightG + bVal * luminanceWeightB) :: Int
                  in if lum >= threshByte
                       then src `unsafeIndex` (baseIdx + channel)
                       else 0
@@ -334,6 +334,18 @@ alphaChannel = 3
 -- | Number of RGB channels (excluding alpha).
 rgbChannelCount :: Int
 rgbChannelCount = 3
+
+-- | BT.709 luminance weight for red.
+luminanceWeightR :: Double
+luminanceWeightR = 0.2126
+
+-- | BT.709 luminance weight for green.
+luminanceWeightG :: Double
+luminanceWeightG = 0.7152
+
+-- | BT.709 luminance weight for blue.
+luminanceWeightB :: Double
+luminanceWeightB = 0.0722
 
 -- | Read a single channel byte from the canvas, clamping coordinates
 -- to the valid range. Out-of-bounds coordinates are snapped to the

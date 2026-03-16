@@ -12,6 +12,7 @@ module GBSprite.Dither
   )
 where
 
+import qualified Data.ByteString as BS
 import Data.List (foldl')
 import Data.Word (Word8)
 import GBSprite.Canvas (Canvas (..), generatePixelData, getPixel)
@@ -54,16 +55,16 @@ orderedDither matrix palette canvas =
 bayerThreshold :: DitherMatrix -> Int -> Int -> Double
 bayerThreshold Bayer2 x y =
   let idx = (y `mod` bayer2Size) * bayer2Size + (x `mod` bayer2Size)
-      val = safeIndex idx bayer2
-   in (fromIntegral val + 0.5) / fromIntegral (bayer2Size * bayer2Size) - 0.5
+      val = fromIntegral (BS.index bayer2 idx) :: Double
+   in (val + 0.5) / fromIntegral (bayer2Size * bayer2Size) - 0.5
 bayerThreshold Bayer4 x y =
   let idx = (y `mod` bayer4Size) * bayer4Size + (x `mod` bayer4Size)
-      val = safeIndex idx bayer4
-   in (fromIntegral val + 0.5) / fromIntegral (bayer4Size * bayer4Size) - 0.5
+      val = fromIntegral (BS.index bayer4 idx) :: Double
+   in (val + 0.5) / fromIntegral (bayer4Size * bayer4Size) - 0.5
 bayerThreshold Bayer8 x y =
   let idx = (y `mod` bayer8Size) * bayer8Size + (x `mod` bayer8Size)
-      val = safeIndex idx bayer8
-   in (fromIntegral val + 0.5) / fromIntegral (bayer8Size * bayer8Size) - 0.5
+      val = fromIntegral (BS.index bayer8 idx) :: Double
+   in (val + 0.5) / fromIntegral (bayer8Size * bayer8Size) - 0.5
 
 -- | Adjust a pixel color by the dither threshold.
 adjustColor :: Double -> Color -> Color
@@ -84,14 +85,17 @@ adjustChannel threshold ch =
 findClosest :: Palette -> Color -> Color
 findClosest (Palette []) color = color
 findClosest (Palette (first : rest)) target =
-  foldl'
-    ( \best candidate ->
-        if colorDistance target candidate < colorDistance target best
-          then candidate
-          else best
+  snd
+    ( foldl'
+        ( \(!bestDist, !bestColor) candidate ->
+            let dist = colorDistance target candidate
+             in if dist < bestDist
+                  then (dist, candidate)
+                  else (bestDist, bestColor)
+        )
+        (colorDistance target first, first)
+        rest
     )
-    first
-    rest
 
 -- | Squared Euclidean distance between two colors in RGB space.
 colorDistance :: Color -> Color -> Int
@@ -109,107 +113,91 @@ colorDistance (Color r1 g1 b1 _) (Color r2 g2 b2 _) =
 bayer2Size :: Int
 bayer2Size = 2
 
--- | 2x2 Bayer matrix.
-bayer2 :: [Int]
-bayer2 = [0, 2, 3, 1]
+-- | 2x2 Bayer matrix (packed as ByteString for O(1) indexing).
+bayer2 :: BS.ByteString
+bayer2 = BS.pack [0, 2, 3, 1]
 
 -- | 4x4 Bayer matrix size.
 bayer4Size :: Int
 bayer4Size = 4
 
--- | 4x4 Bayer matrix.
-bayer4 :: [Int]
-bayer4 =
-  [ 0,
-    8,
-    2,
-    10,
-    12,
-    4,
-    14,
-    6,
-    3,
-    11,
-    1,
-    9,
-    15,
-    7,
-    13,
-    5
-  ]
+-- | 4x4 Bayer matrix (packed as ByteString for O(1) indexing).
+bayer4 :: BS.ByteString
+bayer4 = BS.pack [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5]
 
 -- | 8x8 Bayer matrix size.
 bayer8Size :: Int
 bayer8Size = 8
 
--- | 8x8 Bayer matrix.
-bayer8 :: [Int]
+-- | 8x8 Bayer matrix (packed as ByteString for O(1) indexing).
+bayer8 :: BS.ByteString
 bayer8 =
-  [ 0,
-    32,
-    8,
-    40,
-    2,
-    34,
-    10,
-    42,
-    48,
-    16,
-    56,
-    24,
-    50,
-    18,
-    58,
-    26,
-    12,
-    44,
-    4,
-    36,
-    14,
-    46,
-    6,
-    38,
-    60,
-    28,
-    52,
-    20,
-    62,
-    30,
-    54,
-    22,
-    3,
-    35,
-    11,
-    43,
-    1,
-    33,
-    9,
-    41,
-    51,
-    19,
-    59,
-    27,
-    49,
-    17,
-    57,
-    25,
-    15,
-    47,
-    7,
-    39,
-    13,
-    45,
-    5,
-    37,
-    63,
-    31,
-    55,
-    23,
-    61,
-    29,
-    53,
-    21
-  ]
+  BS.pack
+    [ 0,
+      32,
+      8,
+      40,
+      2,
+      34,
+      10,
+      42,
+      48,
+      16,
+      56,
+      24,
+      50,
+      18,
+      58,
+      26,
+      12,
+      44,
+      4,
+      36,
+      14,
+      46,
+      6,
+      38,
+      60,
+      28,
+      52,
+      20,
+      62,
+      30,
+      54,
+      22,
+      3,
+      35,
+      11,
+      43,
+      1,
+      33,
+      9,
+      41,
+      51,
+      19,
+      59,
+      27,
+      49,
+      17,
+      57,
+      25,
+      15,
+      47,
+      7,
+      39,
+      13,
+      45,
+      5,
+      37,
+      63,
+      31,
+      55,
+      23,
+      61,
+      29,
+      53,
+      21
+    ]
 
 -- ---------------------------------------------------------------------------
 -- Internal helpers
@@ -229,12 +217,6 @@ colorChannel _ _ _ _ a = a
 -- | Dither strength (how much the threshold affects the color).
 ditherStrength :: Double
 ditherStrength = 64.0
-
--- | Safe list indexing without '!!'.
-safeIndex :: Int -> [Int] -> Int
-safeIndex _ [] = 0
-safeIndex 0 (x : _) = x
-safeIndex i (_ : xs) = safeIndex (i - 1) xs
 
 -- | Clamp an integer to valid byte range.
 clampByte :: Int -> Word8

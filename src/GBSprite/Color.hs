@@ -197,9 +197,9 @@ alphaBlend (Color sr sg sb sa) (Color dr dg db da)
             then transparent
             else
               Color
-                (blendChannel srcA invSrcA outA sr dr)
-                (blendChannel srcA invSrcA outA sg dg)
-                (blendChannel srcA invSrcA outA sb db)
+                (blendChannel srcA dstA invSrcA outA sr dr)
+                (blendChannel srcA dstA invSrcA outA sg dg)
+                (blendChannel srcA dstA invSrcA outA sb db)
                 (fromIntegral outA)
 
 -- | Set the alpha channel of a color, preserving RGB.
@@ -407,7 +407,7 @@ lerpChannel t a b =
   let fa = fromIntegral a :: Double
       fb = fromIntegral b :: Double
       result = fa + t * (fb - fa)
-   in round (max 0.0 (min 255.0 result))
+   in round (max 0.0 (min channelMaxF result))
 
 mulChannel :: Word8 -> Word8 -> Word8
 mulChannel a b =
@@ -415,11 +415,12 @@ mulChannel a b =
       ib = fromIntegral b :: Int
    in fromIntegral (ia * ib `div` channelMax)
 
-blendChannel :: Int -> Int -> Int -> Word8 -> Word8 -> Word8
-blendChannel srcA invSrcA outA s d =
+blendChannel :: Int -> Int -> Int -> Int -> Word8 -> Word8 -> Word8
+blendChannel srcA dstA invSrcA outA s d =
   let is = fromIntegral s :: Int
       id_ = fromIntegral d :: Int
-      result = (is * srcA + id_ * invSrcA) `div` outA
+      dstContrib = id_ * dstA * invSrcA `div` channelMax
+      result = (is * srcA + dstContrib) `div` outA
    in fromIntegral (min channelMax (max 0 result))
 
 luminance :: Word8 -> Word8 -> Word8 -> Word8
@@ -443,10 +444,9 @@ computeHue rf gf bf cmax delta
       wrapHue (hueSegmentSize * ((rf - gf) / delta + 4.0))
 
 wrapHue :: Double -> Double
-wrapHue h
-  | h >= fullCircle = wrapHue (h - fullCircle)
-  | h < 0.0 = wrapHue (h + fullCircle)
-  | otherwise = h
+wrapHue h =
+  let wrapped = h - fullCircle * fromIntegral (floor (h / fullCircle) :: Int)
+   in if wrapped < 0.0 then wrapped + fullCircle else wrapped
 
 hueComponents :: Int -> Double -> Double -> (Double, Double, Double)
 hueComponents 0 c x = (c, x, 0)

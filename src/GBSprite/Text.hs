@@ -60,12 +60,14 @@ renderChar font color ch =
 
 -- | Render a string as a canvas (horizontal layout, no wrapping).
 renderText :: Font -> Color -> String -> Canvas
-renderText font color text =
-  let charW = fontWidth font
-      charH = fontHeight font
-      totalW = length text * charW
-      blank = newCanvas totalW charH transparent
-   in foldl' (\c (i, ch) -> stamp c (i * charW) 0 (renderChar font color ch)) blank (zip [0 ..] text)
+renderText font color text = case text of
+  [] -> newCanvas 1 (fontHeight font) transparent
+  _ ->
+    let charW = fontWidth font
+        charH = fontHeight font
+        totalW = length text * charW
+        blank = newCanvas totalW charH transparent
+     in foldl' (\c (i, ch) -> stamp c (i * charW) 0 (renderChar font color ch)) blank (zip [0 ..] text)
 
 -- | Compute the width of rendered text in pixels.
 textWidth :: Font -> String -> Int

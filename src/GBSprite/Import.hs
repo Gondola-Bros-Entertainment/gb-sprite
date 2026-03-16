@@ -1,7 +1,7 @@
 -- | BMP and PNG file import.
 --
 -- Reads 24-bit and 32-bit BMP files and 8-bit RGB\/RGBA PNG files into
--- 'Canvas' values. Decoding functions are pure; only 'readBmp' and
+-- t'Canvas' values. Decoding functions are pure; only 'readBmp' and
 -- 'readPng' perform IO.
 module GBSprite.Import
   ( -- * BMP
@@ -15,12 +15,14 @@ module GBSprite.Import
 where
 
 import qualified Codec.Compression.Zlib as Z
+import Control.Exception (SomeException, evaluate, try)
 import Data.Bits (shiftL, (.&.), (.|.))
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as BL
 import Data.Int (Int64)
 import Data.Word (Word8)
 import GBSprite.Canvas (Canvas (..))
+import System.IO.Unsafe (unsafePerformIO)
 
 -- ---------------------------------------------------------------------------
 -- Shared constants
@@ -214,11 +216,11 @@ ihdrHeightOffset = 4
 -- BMP decoding
 -- ---------------------------------------------------------------------------
 
--- | Read a BMP file and decode it into a 'Canvas'.
+-- | Read a BMP file and decode it into a t'Canvas'.
 readBmp :: FilePath -> IO (Either String Canvas)
 readBmp path = decodeBmp <$> BS.readFile path
 
--- | Decode a strict 'BS.ByteString' containing a BMP file into a 'Canvas'.
+-- | Decode a strict 'BS.ByteString' containing a BMP file into a t'Canvas'.
 --
 -- Supports 24-bit (RGB) and 32-bit (BGRA) uncompressed BMP files.
 -- Rows may be stored bottom-up (positive height) or top-down (negative
@@ -332,11 +334,11 @@ decodeBmpPixels bs pixelOffset width height paddedRowSize bytesPerPixel topDown 
 -- PNG decoding
 -- ---------------------------------------------------------------------------
 
--- | Read a PNG file and decode it into a 'Canvas'.
+-- | Read a PNG file and decode it into a t'Canvas'.
 readPng :: FilePath -> IO (Either String Canvas)
 readPng path = decodePng <$> BL.readFile path
 
--- | Decode a lazy 'BL.ByteString' containing a PNG file into a 'Canvas'.
+-- | Decode a lazy 'BL.ByteString' containing a PNG file into a t'Canvas'.
 --
 -- Supports 8-bit RGB (color type 2) and 8-bit RGBA (color type 6) images
 -- with all five standard filter types (None, Sub, Up, Average, Paeth).
@@ -474,11 +476,17 @@ collectIdatChunks lbs = go (fromIntegral pngSignatureLength) []
 
 -- | Decompress concatenated IDAT data using zlib.
 --
--- Note: 'Z.decompress' may throw a 'Z.DecompressError' on corrupt data.
--- In the IO wrappers ('readPng') this surfaces as an IO exception.
+-- Returns 'Left' on corrupt or invalid zlib data.
 decompressIdat :: BL.ByteString -> Either String BS.ByteString
 decompressIdat compressed =
-  Right (BL.toStrict (Z.decompress compressed))
+  unsafePerformIO $ do
+    result <- try (evaluate (BL.toStrict (Z.decompress compressed)))
+    case result of
+      Left e ->
+        pure (Left ("PNG: zlib decompression failed: " ++ show (e :: SomeException)))
+      Right bs ->
+        pure (Right bs)
+{-# NOINLINE decompressIdat #-}
 
 -- | Reconstruct filtered PNG row data into raw pixel bytes.
 reconstructFilters :: BS.ByteString -> Int -> Int -> Int -> BS.ByteString

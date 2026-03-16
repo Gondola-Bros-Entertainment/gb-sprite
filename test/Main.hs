@@ -1087,7 +1087,7 @@ testTextAdvanced =
     ),
     ( "renderText empty string",
       let c = renderText defaultFont white ""
-       in assertEqual "empty text width" 0 (cWidth c)
+       in assertEqual "empty text width" 1 (cWidth c)
     ),
     ( "renderText single char matches renderChar",
       let textC = renderText defaultFont white "A"

@@ -75,7 +75,8 @@ shelfPack padding items = go items 0 0 0 0 []
        in if shelfX + w > maxShelfWidth && shelfX > 0
             then
               -- Start new shelf
-              go ((name, canvas) : rest) 0 totalH totalW totalH acc
+              let newShelfY = totalH + padding
+               in go ((name, canvas) : rest) 0 newShelfY totalW newShelfY acc
             else
               let entry =
                     SheetEntry

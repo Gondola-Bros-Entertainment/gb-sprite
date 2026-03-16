@@ -180,10 +180,10 @@ drawDiamond canvas config sx sy color =
       halfH = th `div` tileHalvingFactor
       topX = sx + halfW
       topY = sy
-      rightX = sx + tw
+      rightX = sx + tw - 1
       rightY = sy + halfH
       bottomX = sx + halfW
-      bottomY = sy + th
+      bottomY = sy + th - 1
       leftX = sx
       leftY = sy + halfH
       withTopRight = drawLine canvas topX topY rightX rightY color
@@ -202,16 +202,16 @@ fillDiamond canvas config sx sy color =
       th = isoTileHeight config
       halfW = tw `div` tileHalvingFactor
       halfH = th `div` tileHalvingFactor
-   in foldl' (fillScanline halfW halfH) canvas [0 .. th]
+   in foldl' (fillScanline halfW halfH) canvas [0 .. th - 1]
   where
     fillScanline hw hh c row =
       let diamondCenterX = sx + hw
           edgeSpan =
-            if row <= hh
+            if row < hh
               then -- Upper half: expanding from top
                 hw * row `div` max 1 hh
               else -- Lower half: contracting toward bottom
-                let rowsFromBottom = isoTileHeight config - row
+                let rowsFromBottom = isoTileHeight config - 1 - row
                  in hw * rowsFromBottom `div` max 1 hh
           edgeLeft = diamondCenterX - edgeSpan
           edgeRight = diamondCenterX + edgeSpan
@@ -223,7 +223,7 @@ fillDiamond canvas config sx sy color =
 
 -- | Render an isometric tilemap.
 --
--- Takes an 'IsoConfig', a list of indexed tile canvases
+-- Takes an t'IsoConfig', a list of indexed tile canvases
 -- @[(tileIndex, Canvas)]@, and a 2D grid of tile indices (row-major,
 -- outer list is rows). Tiles are rendered back-to-front according to
 -- isometric depth order. The output canvas is sized to fit all tiles.

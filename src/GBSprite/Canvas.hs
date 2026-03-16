@@ -75,22 +75,28 @@ generatePixelData n f = unsafeCreate n $ \ptr ->
   mapM_ (\i -> pokeByteOff ptr i (f i)) [0 .. n - 1]
 
 -- | Create a canvas filled with a solid color.
+-- Dimensions are clamped to a minimum of 1.
 newCanvas :: Int -> Int -> Color -> Canvas
 newCanvas w h color =
-  Canvas
-    { cWidth = w,
-      cHeight = h,
-      cPixels = generatePixelData (w * h * bytesPerPixel) (pixelByte color w)
-    }
+  let safeW = max 1 w
+      safeH = max 1 h
+   in Canvas
+        { cWidth = safeW,
+          cHeight = safeH,
+          cPixels = generatePixelData (safeW * safeH * bytesPerPixel) (pixelByte color safeW)
+        }
 
 -- | Create a canvas from a flat list of colors (row-major).
+-- Dimensions are clamped to a minimum of 1.
 fromPixels :: Int -> Int -> [Color] -> Canvas
 fromPixels w h colors =
-  Canvas
-    { cWidth = w,
-      cHeight = h,
-      cPixels = BS.pack (concatMap colorToBytes (take (w * h) padded))
-    }
+  let safeW = max 1 w
+      safeH = max 1 h
+   in Canvas
+        { cWidth = safeW,
+          cHeight = safeH,
+          cPixels = BS.pack (concatMap colorToBytes (take (safeW * safeH) padded))
+        }
   where
     padded = colors ++ repeat transparent
 

@@ -169,8 +169,8 @@ blendCompose mode dst ox oy src =
 -- Masking
 -- ---------------------------------------------------------------------------
 
--- | Apply an alpha mask to a canvas. The mask's luminance (or alpha)
--- controls the output alpha: white mask = fully visible, black = transparent.
+-- | Apply an alpha mask to a canvas. The mask's alpha channel
+-- controls the output alpha: opaque mask = fully visible, transparent = hidden.
 -- Mask and canvas must be the same size; if they differ, uses the
 -- canvas dimensions and treats out-of-bounds mask pixels as opaque.
 maskCanvas :: Canvas -> Canvas -> Canvas

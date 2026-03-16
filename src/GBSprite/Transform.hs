@@ -242,7 +242,7 @@ shearH factor canvas
           offsetX = ceiling maxShift :: Int
        in Canvas newW h $ generatePixels newW h $ \ox oy ->
             let shift = factor * (fromIntegral oy - fromIntegral h / 2.0)
-                srcX = fromIntegral ox - fromIntegral offsetX + shift
+                srcX = fromIntegral ox - fromIntegral offsetX - shift
                 srcY = fromIntegral oy
                 Color sr sg sb sa = bilinearSample canvas srcX srcY
              in \ch -> colorChannel ch sr sg sb sa
@@ -261,7 +261,7 @@ shearV factor canvas
        in Canvas w newH $ generatePixels w newH $ \ox oy ->
             let shift = factor * (fromIntegral ox - fromIntegral w / 2.0)
                 srcX = fromIntegral ox
-                srcY = fromIntegral oy - fromIntegral offsetY + shift
+                srcY = fromIntegral oy - fromIntegral offsetY - shift
                 Color sr sg sb sa = bilinearSample canvas srcX srcY
              in \ch -> colorChannel ch sr sg sb sa
 

@@ -251,13 +251,17 @@ gradientCount = 8
 
 gradientVector :: Int -> (Double, Double)
 gradientVector 0 = (1.0, 0.0)
-gradientVector 1 = (0.707, 0.707)
+gradientVector 1 = (invSqrt2, invSqrt2)
 gradientVector 2 = (0.0, 1.0)
-gradientVector 3 = (-0.707, 0.707)
+gradientVector 3 = (negate invSqrt2, invSqrt2)
 gradientVector 4 = (-1.0, 0.0)
-gradientVector 5 = (-0.707, -0.707)
+gradientVector 5 = (negate invSqrt2, negate invSqrt2)
 gradientVector 6 = (0.0, -1.0)
-gradientVector _ = (0.707, -0.707)
+gradientVector _ = (invSqrt2, negate invSqrt2)
+
+-- | 1 / sqrt 2, the diagonal gradient magnitude.
+invSqrt2 :: Double
+invSqrt2 = 0.7071067811865476
 
 -- ---------------------------------------------------------------------------
 -- Worley noise (cellular)

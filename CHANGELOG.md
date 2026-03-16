@@ -1,5 +1,56 @@
 # Changelog
 
+## 0.5.0.0
+
+### New Modules
+
+- **`GBSprite.Adjust`** — Canvas-wide color adjustments: grayscale, invert, tint, brightness, contrast, saturation, hue shift, color remapping, posterize, threshold, sepia.
+- **`GBSprite.Filter`** — Convolution filters: box blur, Gaussian blur (3-pass approximation), sharpen (unsharp mask), Sobel edge detection, bloom (bright extract + blur + additive blend).
+- **`GBSprite.Import`** — Native BMP and PNG decoding. Read 24/32-bit BMP and 8-bit RGB/RGBA PNG files back into `Canvas`. Supports all 5 PNG filter types (None, Sub, Up, Average, Paeth). Pure decoders (`decodeBmp`, `decodePng`) and IO wrappers (`readBmp`, `readPng`).
+- **`GBSprite.Isometric`** — Isometric projection for 2:1 diamond tiles. World/screen coordinate conversion, point-in-diamond hit testing, depth sorting, diamond drawing/filling, and isometric tilemap rendering.
+
+### New Features
+
+- **HSL/HSV color space** (`Color`): `toHSL`, `fromHSL`, `toHSV`, `fromHSV`, and derived transforms (`tintColor`, `invertColor`, `grayscaleColor`, `brightenColor`, `contrastColor`, `saturateColor`, `shiftHueColor`).
+- **Arbitrary rotation** (`Transform`): `rotateArbitrary` with bilinear interpolation for any angle in degrees.
+- **Bilinear scaling** (`Transform`): `scaleBilinear` for smooth up/down scaling; `scaleTo` for exact target dimensions.
+- **Shear transforms** (`Transform`): `shearH` and `shearV`.
+- **Anti-aliased lines** (`Draw`): `drawAALine` using Wu's algorithm.
+- **Cubic Bezier curves** (`Draw`): `drawCubicBezier`.
+- **Catmull-Rom splines** (`Draw`): `drawCatmullRom` — smooth curves through control points.
+- **Pattern fill** (`Draw`): `patternFill` — fill a rectangular area with a repeating tile.
+- **Blend modes** (`Compose`): `BlendMultiply`, `BlendScreen`, `BlendOverlay`, `BlendAdditive`, `BlendSoftLight`, `BlendDifference` via `blendCompose`.
+- **Alpha masking** (`Compose`): `maskCanvas` — clip rendering to a mask's alpha channel.
+- **Perlin noise** (`Noise`): `perlinNoise` — gradient noise with dot-product interpolation.
+- **Worley noise** (`Noise`): `worleyNoise` — cellular/Voronoi patterns.
+- **Turbulence** (`Noise`): `turbulence` — absolute-value FBM for fire/cloud/water textures.
+- **Palette lerp** (`Palette`): `paletteLerp` — interpolate between two palettes for day/night transitions.
+- **Palette extraction** (`Palette`): `extractPalette` — derive a palette from a canvas using median cut.
+- **Color quantization** (`Palette`): `quantizeColor` — map a color to the nearest palette entry.
+- **Sprite mirroring** (`Sprite`): `mirrorSprite` — horizontal flip of all frames.
+- **Sprite trimming** (`Sprite`): `trimSprite` — crop transparent borders from all frames.
+- **Animation blending** (`Animation`): `blendFrames` — cross-fade between two canvases.
+- **Canvas crop/trim** (`Canvas`): `crop`, `trimTransparent`, `canvasOpacity`.
+- Canvas dimension clamping: `newCanvas` and `fromPixels` now clamp dimensions to minimum 1.
+- Empty string guard: `renderText` returns a valid 1-pixel-wide canvas for empty input.
+
+### Bug Fixes
+
+- **Fix Porter-Duff alpha blend** (`Color`): `alphaBlend` now correctly weights the destination channel by `dstA` when compositing semi-transparent colors. Previously, the destination RGB contribution was over-weighted when `dstA < 255`.
+- **Fix isometric diamond off-by-one** (`Isometric`): `drawDiamond` and `fillDiamond` now draw within the `tw x th` bounding box (previously drew `(tw+1) x (th+1)` pixels).
+- **Fix shear direction** (`Transform`): `shearH` and `shearV` now shift in the documented direction (positive values shift bottom rows right / right columns down).
+- **Fix PNG decompression exception** (`Import`): `decodePng` now returns `Left` on corrupt zlib data instead of throwing an impure exception.
+- **Fix bloom luminance** (`Filter`): Bloom threshold now uses BT.709 perceptual weights instead of simple RGB average.
+- **Fix sprite sheet vertical padding** (`Sheet`): Shelf packing now applies padding between shelves vertically, not just horizontally.
+- **Fix Perlin gradient vectors** (`Noise`): Diagonal gradients now use exact `1/sqrt(2)` instead of truncated `0.707`.
+- **Fix dither performance** (`Dither`): Bayer matrices backed by `ByteString` for O(1) lookup (was O(n) list traversal per pixel). `findClosest` now carries best distance in accumulator (halves comparisons).
+- **Fix `wrapHue` performance** (`Color`): O(1) modular arithmetic replaces recursive subtract/add loop.
+- **Fix `maskCanvas` docstring** (`Compose`): Corrected to say "alpha channel" (was incorrectly "luminance").
+
+### Tests
+
+- 591 tests (up from 366). Full coverage of all new modules and bug fixes.
+
 ## 0.4.0.0
 
 ### Breaking Changes
