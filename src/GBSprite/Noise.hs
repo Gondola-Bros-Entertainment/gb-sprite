@@ -14,6 +14,9 @@ module GBSprite.Noise
     -- * Perlin noise
     perlinNoise,
 
+    -- * Simplex noise
+    simplexNoise,
+
     -- * Worley noise
     worleyNoise,
 
@@ -262,6 +265,113 @@ gradientVector _ = (invSqrt2, negate invSqrt2)
 -- | 1 / sqrt 2, the diagonal gradient magnitude.
 invSqrt2 :: Double
 invSqrt2 = 0.7071067811865476
+
+-- ---------------------------------------------------------------------------
+-- Simplex noise
+-- ---------------------------------------------------------------------------
+
+-- | Generate simplex noise.
+--
+-- Uses a triangular simplex grid instead of Perlin's square grid,
+-- producing fewer directional artifacts and better isotropy.
+-- Same API as 'perlinNoise': @simplexNoise width height seed scale@.
+simplexNoise :: Int -> Int -> Int -> Double -> Canvas
+simplexNoise w h seed scale =
+  let pixels = generatePixelData (w * h * bytesPerPixel) $ \i ->
+        let pixIdx = i `div` bytesPerPixel
+            channel = i `mod` bytesPerPixel
+            x = pixIdx `mod` w
+            y = pixIdx `div` w
+            noiseVal = sampleSimplex seed scale x y
+            gray = clampByte (round (noiseVal * channelMaxF))
+         in colorChannel channel gray gray gray maxAlpha
+   in Canvas w h pixels
+
+sampleSimplex :: Int -> Double -> Int -> Int -> Double
+sampleSimplex seed scale x y =
+  let fx = fromIntegral x / max 1.0 scale
+      fy = fromIntegral y / max 1.0 scale
+      -- Skew input to simplex grid
+      skew = (fx + fy) * simplexSkewF2
+      cellI = floor (fx + skew) :: Int
+      cellJ = floor (fy + skew) :: Int
+      -- Unskew back to cartesian
+      unskew = fromIntegral (cellI + cellJ) * simplexUnskewG2
+      originX = fromIntegral cellI - unskew
+      originY = fromIntegral cellJ - unskew
+      -- Distances from first simplex vertex
+      dx0 = fx - originX
+      dy0 = fy - originY
+      -- Determine which simplex triangle (lower or upper)
+      (offsetI1, offsetJ1) =
+        if dx0 > dy0 then (1, 0) else (0, 1)
+      -- Distances from second and third vertices
+      dx1 = dx0 - fromIntegral offsetI1 + simplexUnskewG2
+      dy1 = dy0 - fromIntegral offsetJ1 + simplexUnskewG2
+      dx2 = dx0 - 1.0 + simplexDoubleUnskew
+      dy2 = dy0 - 1.0 + simplexDoubleUnskew
+      -- Sum contributions from three corners
+      n0 = simplexContrib seed cellI cellJ dx0 dy0
+      n1 = simplexContrib seed (cellI + offsetI1) (cellJ + offsetJ1) dx1 dy1
+      n2 = simplexContrib seed (cellI + 1) (cellJ + 1) dx2 dy2
+      raw = simplexOutputScale * (n0 + n1 + n2)
+   in max 0.0 (min 1.0 ((raw + 1.0) / 2.0))
+
+simplexContrib :: Int -> Int -> Int -> Double -> Double -> Double
+simplexContrib seed gi gj dx dy =
+  let t = simplexFalloff - dx * dx - dy * dy
+   in if t < 0.0
+        then 0.0
+        else
+          let tSq = t * t
+              grad = simplexGradDot seed gi gj dx dy
+           in tSq * tSq * grad
+
+simplexGradDot :: Int -> Int -> Int -> Double -> Double -> Double
+simplexGradDot seed gx gy dx dy =
+  let hash = lcgHash (seed + gx * latticeHashX + gy * latticeHashY)
+      gradIdx = hash `mod` simplexGradCount
+      (gxv, gyv) = simplexGrad gradIdx
+   in gxv * dx + gyv * dy
+
+-- | 12 gradient vectors for 2D simplex noise (edges of a cube projected to 2D).
+simplexGrad :: Int -> (Double, Double)
+simplexGrad 0 = (1.0, 1.0)
+simplexGrad 1 = (-1.0, 1.0)
+simplexGrad 2 = (1.0, -1.0)
+simplexGrad 3 = (-1.0, -1.0)
+simplexGrad 4 = (1.0, 0.0)
+simplexGrad 5 = (-1.0, 0.0)
+simplexGrad 6 = (0.0, 1.0)
+simplexGrad 7 = (0.0, -1.0)
+simplexGrad 8 = (1.0, 1.0)
+simplexGrad 9 = (-1.0, 1.0)
+simplexGrad 10 = (0.0, -1.0)
+simplexGrad _ = (0.0, 1.0)
+
+-- | Simplex skew factor: @(sqrt 3 - 1) / 2@.
+simplexSkewF2 :: Double
+simplexSkewF2 = 0.36602540378443865
+
+-- | Simplex unskew factor: @(3 - sqrt 3) / 6@.
+simplexUnskewG2 :: Double
+simplexUnskewG2 = 0.21132486540518713
+
+-- | Double unskew: @2 * G2@.
+simplexDoubleUnskew :: Double
+simplexDoubleUnskew = 2.0 * simplexUnskewG2
+
+-- | Radial falloff threshold for simplex contributions.
+simplexFalloff :: Double
+simplexFalloff = 0.5
+
+-- | Output scale factor to map simplex noise to approximately @[-1, 1]@.
+simplexOutputScale :: Double
+simplexOutputScale = 70.0
+
+-- | Number of simplex gradient vectors.
+simplexGradCount :: Int
+simplexGradCount = 12
 
 -- ---------------------------------------------------------------------------
 -- Worley noise (cellular)

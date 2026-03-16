@@ -6,7 +6,7 @@ module Main (main) where
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as BL
 import Data.Word (Word8)
-import GBSprite.Adjust (adjustBrightness, adjustContrast, adjustSaturation, applyTint, grayscale, invertColors, posterize, remapColor, remapColors, sepia, shiftHue, threshold)
+import GBSprite.Adjust (ColorLUT (..), adjustBrightness, adjustContrast, adjustSaturation, applyLUT, applyTint, cinematicLUT, coolLUT, grayscale, identityLUT, invertColors, modifyLUT, posterize, remapColor, remapColors, sepia, shiftHue, threshold, warmLUT)
 import GBSprite.Animation (Animation (..), LoopMode (..), animation, animationDone, animationFrame, blendFrames, loopAnimation, onceAnimation, pingPongAnimation)
 import GBSprite.BMP (encodeBmp)
 import GBSprite.Canvas (Canvas (..), canvasOpacity, clearCanvas, crop, drawCircle, drawLine, drawRect, fillCircle, fillRect, floodFill, fromPixels, getPixel, hLine, inBounds, mapPixels, newCanvas, pixelFold, pixelIndex, setPixel, trimTransparent)
@@ -20,7 +20,7 @@ import GBSprite.Gradient (diagonalGradient, linearGradient, radialGradient)
 import GBSprite.Import (decodeBmp, decodePng)
 import GBSprite.Isometric (IsoConfig (..), defaultIsoConfig, drawDiamond, fillDiamond, isoDepthCompare, pointInDiamond, renderIsoMap, screenToWorld, worldToScreen)
 import GBSprite.NineSlice (NineSlice (..), nineSlice, renderNineSlice)
-import GBSprite.Noise (fbm, perlinNoise, turbulence, valueNoise, valueNoiseColor, worleyNoise)
+import GBSprite.Noise (fbm, perlinNoise, simplexNoise, turbulence, valueNoise, valueNoiseColor, worleyNoise)
 import GBSprite.PNG (encodePng)
 import GBSprite.Palette (Palette (..), extractPalette, fromColors, gameboy, grayscale4, grayscale8, nes, paletteColor, paletteLerp, paletteSize, paletteSwap, quantizeColor)
 import GBSprite.Sheet (SheetEntry (..), SpriteSheet (..), packSheet)
@@ -142,6 +142,8 @@ main = do
         ++ testTilemap
         ++ testFilter
         ++ testIsometric
+        ++ testSimplexNoise
+        ++ testLUT
         ++ importTests
     )
 
@@ -2812,6 +2814,147 @@ testNoiseNew =
     worleyPoints = 3
     turbOctaves :: Int
     turbOctaves = 3
+
+-- ---------------------------------------------------------------------------
+-- Simplex noise tests
+-- ---------------------------------------------------------------------------
+
+testSimplexNoise :: [(String, TestResult)]
+testSimplexNoise =
+  [ ( "simplexNoise dimensions correct",
+      let c = simplexNoise 16 16 42 4.0
+       in assertEqual "simplex dims" (16, 16) (cWidth c, cHeight c)
+    ),
+    ( "simplexNoise deterministic",
+      let c1 = simplexNoise 16 16 42 4.0
+          c2 = simplexNoise 16 16 42 4.0
+       in assertEqual "simplex determ" c1 c2
+    ),
+    ( "simplexNoise different seeds differ",
+      let c1 = simplexNoise 16 16 42 4.0
+          c2 = simplexNoise 16 16 99 4.0
+       in assertTrue "simplex seeds" (c1 /= c2)
+    ),
+    ( "simplexNoise all pixels opaque",
+      let c = simplexNoise 8 8 42 4.0
+          allOpaque = all (\(sx, sy) -> colorA (getPixel c sx sy) == 255) [(sx, sy) | sx <- [0 .. 7], sy <- [0 .. 7]]
+       in assertTrue "simplex opaque" allOpaque
+    ),
+    ( "simplexNoise values in valid range",
+      let c = simplexNoise 8 8 42 4.0
+          allValid = all (\(sx, sy) -> colorR (getPixel c sx sy) <= 255) [(sx, sy) | sx <- [0 .. 7], sy <- [0 .. 7]]
+       in assertTrue "simplex range" allValid
+    ),
+    ( "simplexNoise differs from perlinNoise",
+      let c1 = simplexNoise 16 16 42 4.0
+          c2 = perlinNoise 16 16 42 4.0
+       in assertTrue "simplex vs perlin" (c1 /= c2)
+    ),
+    ( "simplexNoise different scales differ",
+      let c1 = simplexNoise 16 16 42 4.0
+          c2 = simplexNoise 16 16 42 16.0
+       in assertTrue "simplex scales" (c1 /= c2)
+    ),
+    ( "simplexNoise grayscale (R == G == B)",
+      let c = simplexNoise 8 8 42 4.0
+          allGray = all (\(sx, sy) -> let p = getPixel c sx sy in colorR p == colorG p && colorG p == colorB p) [(sx, sy) | sx <- [0 .. 7], sy <- [0 .. 7]]
+       in assertTrue "simplex gray" allGray
+    )
+  ]
+
+-- ---------------------------------------------------------------------------
+-- LUT color grading tests
+-- ---------------------------------------------------------------------------
+
+testLUT :: [(String, TestResult)]
+testLUT =
+  [ ( "identityLUT has correct size",
+      let lut = identityLUT 16
+       in assertEqual "lut size" 16 (lutSize lut)
+    ),
+    ( "identityLUT min size clamp",
+      let lut = identityLUT 0
+       in assertTrue "lut min size" (lutSize lut >= 2)
+    ),
+    ( "identityLUT data has correct length",
+      let lut = identityLUT 16
+       in assertEqual "lut data len" (16 * 16 * 16 * 3) (BS.length (lutData lut))
+    ),
+    ( "applyLUT identity preserves canvas",
+      let c = newCanvas 4 4 red
+          lut = identityLUT 16
+          result = applyLUT lut c
+       in assertEqual "lut identity" (getPixel c 2 2) (getPixel result 2 2)
+    ),
+    ( "applyLUT identity preserves alpha",
+      let c = newCanvas 4 4 (Color 128 64 200 100)
+          lut = identityLUT 16
+          result = applyLUT lut c
+       in assertEqual "lut alpha" 100 (colorA (getPixel result 2 2))
+    ),
+    ( "applyLUT identity preserves dimensions",
+      let c = newCanvas 8 6 red
+          result = applyLUT (identityLUT 16) c
+       in assertEqual "lut dims" (8, 6) (cWidth result, cHeight result)
+    ),
+    ( "warmLUT shifts red up",
+      let c = newCanvas 4 4 (Color 128 128 128 255)
+          result = applyLUT (warmLUT 16) c
+          pixel = getPixel result 2 2
+       in assertTrue "warm red" (colorR pixel > 128)
+    ),
+    ( "warmLUT shifts blue down",
+      let c = newCanvas 4 4 (Color 128 128 128 255)
+          result = applyLUT (warmLUT 16) c
+          pixel = getPixel result 2 2
+       in assertTrue "warm blue" (colorB pixel < 128)
+    ),
+    ( "coolLUT shifts blue up",
+      let c = newCanvas 4 4 (Color 128 128 128 255)
+          result = applyLUT (coolLUT 16) c
+          pixel = getPixel result 2 2
+       in assertTrue "cool blue" (colorB pixel > 128)
+    ),
+    ( "coolLUT shifts red down",
+      let c = newCanvas 4 4 (Color 128 128 128 255)
+          result = applyLUT (coolLUT 16) c
+          pixel = getPixel result 2 2
+       in assertTrue "cool red" (colorR pixel < 128)
+    ),
+    ( "cinematicLUT preserves dimensions",
+      let c = newCanvas 4 4 red
+          result = applyLUT (cinematicLUT 16) c
+       in assertEqual "cinematic dims" (4, 4) (cWidth result, cHeight result)
+    ),
+    ( "cinematicLUT all pixels opaque",
+      let c = newCanvas 4 4 (Color 100 150 200 255)
+          result = applyLUT (cinematicLUT 16) c
+       in assertEqual "cinematic alpha" 255 (colorA (getPixel result 2 2))
+    ),
+    ( "modifyLUT composes adjustments",
+      let lut = modifyLUT (identityLUT 16) (\(Color r g b a) -> Color (min 255 (r + 10)) g b a)
+          c = newCanvas 4 4 (Color 128 128 128 255)
+          result = applyLUT lut c
+          pixel = getPixel result 2 2
+       in assertTrue "modifyLUT" (colorR pixel > 128)
+    ),
+    ( "warmLUT and coolLUT differ",
+      let c = newCanvas 4 4 (Color 128 128 128 255)
+          warm = applyLUT (warmLUT 16) c
+          cool = applyLUT (coolLUT 16) c
+       in assertTrue "warm vs cool" (warm /= cool)
+    ),
+    ( "applyLUT identity on black",
+      let c = newCanvas 4 4 black
+          result = applyLUT (identityLUT 16) c
+       in assertEqual "lut black" black (getPixel result 2 2)
+    ),
+    ( "applyLUT identity on white",
+      let c = newCanvas 4 4 white
+          result = applyLUT (identityLUT 16) c
+       in assertEqual "lut white" white (getPixel result 2 2)
+    )
+  ]
 
 -- ---------------------------------------------------------------------------
 -- Sprite new tests
