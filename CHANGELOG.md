@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.5.1.0
+
+### New Features
+
+- **Simplex noise** (`Noise`): `simplexNoise` — triangular-grid noise with fewer directional artifacts than Perlin. Same API as `perlinNoise`.
+- **LUT color grading** (`Adjust`): `ColorLUT` type with trilinear interpolation. `identityLUT`, `applyLUT`, `modifyLUT` for composable grading, plus presets `warmLUT`, `coolLUT`, `cinematicLUT`.
+
+### Tests
+
+- 615 tests.
+
 ## 0.5.0.0
 
 ### Breaking Changes
@@ -26,8 +37,6 @@
 - **Pattern fill** (`Draw`): `patternFill` — fill a rectangular area with a repeating tile.
 - **Blend modes** (`Compose`): `BlendMultiply`, `BlendScreen`, `BlendOverlay`, `BlendAdditive`, `BlendSoftLight`, `BlendDifference` via `blendCompose`.
 - **Alpha masking** (`Compose`): `maskCanvas` — clip rendering to a mask's alpha channel.
-- **Simplex noise** (`Noise`): `simplexNoise` — triangular-grid noise with fewer directional artifacts than Perlin.
-- **LUT color grading** (`Adjust`): `ColorLUT` type with trilinear interpolation, `identityLUT`, `applyLUT`, `modifyLUT` for composable grading, and presets `warmLUT`, `coolLUT`, `cinematicLUT`.
 - **Perlin noise** (`Noise`): `perlinNoise` — gradient noise with dot-product interpolation.
 - **Worley noise** (`Noise`): `worleyNoise` — cellular/Voronoi patterns.
 - **Turbulence** (`Noise`): `turbulence` — absolute-value FBM for fire/cloud/water textures.
@@ -56,7 +65,7 @@
 
 ### Tests
 
-- 615 tests (up from 366). Full coverage of all new modules and bug fixes.
+- 615 tests. Full coverage of all new modules and bug fixes.
 
 ## 0.4.0.0
 
