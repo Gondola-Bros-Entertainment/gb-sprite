@@ -65,7 +65,7 @@
 
 ### Tests
 
-- 615 tests. Full coverage of all new modules and bug fixes.
+- 591 tests. Full coverage of all new modules and bug fixes.
 
 ## 0.4.0.0
 
