@@ -1,23 +1,35 @@
--- | Export API for saving canvases to files.
+-- | File I\/O for saving and loading canvases.
 --
--- Both BMP and PNG export are always available.
+-- This is the only module (together with "GBSprite.Import") that
+-- performs I\/O. Every other module in the library is pure.
 module GBSprite.Export
   ( -- * BMP
     exportBmp,
+    writeBmp,
 
     -- * PNG
     exportPng,
+    writePng,
   )
 where
 
-import GBSprite.BMP (writeBmp)
+import qualified Data.ByteString.Lazy as BL
+import GBSprite.BMP (encodeBmp)
 import GBSprite.Canvas (Canvas)
-import GBSprite.PNG (writePng)
+import GBSprite.PNG (encodePng)
 
 -- | Export a canvas as a BMP file.
 exportBmp :: FilePath -> Canvas -> IO ()
-exportBmp = writeBmp
+exportBmp path canvas = BL.writeFile path (encodeBmp canvas)
 
 -- | Export a canvas as a PNG file.
 exportPng :: FilePath -> Canvas -> IO ()
-exportPng = writePng
+exportPng path canvas = BL.writeFile path (encodePng canvas)
+
+-- | Alias for 'exportBmp'.
+writeBmp :: FilePath -> Canvas -> IO ()
+writeBmp = exportBmp
+
+-- | Alias for 'exportPng'.
+writePng :: FilePath -> Canvas -> IO ()
+writePng = exportPng

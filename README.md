@@ -99,7 +99,7 @@ build-depends: gb-sprite >= 0.4
 ```haskell
 import GBSprite.Canvas (newCanvas, fillCircle)
 import GBSprite.Color (red, transparent)
-import GBSprite.BMP (writeBmp)
+import GBSprite.Export (writeBmp)
 
 main :: IO ()
 main = do
@@ -420,7 +420,7 @@ import GBSprite.Gradient (linearGradient)
 import GBSprite.Palette (gameboy)
 import GBSprite.Sheet (SpriteSheet (..), packSheet)
 import GBSprite.VFX (ExplosionConfig (..), explosionFrames)
-import GBSprite.BMP (writeBmp)
+import GBSprite.Export (writeBmp)
 
 main :: IO ()
 main = do

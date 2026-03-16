@@ -14,15 +14,13 @@ module GBSprite.Import
   )
 where
 
-import qualified Codec.Compression.Zlib as Z
-import Control.Exception (SomeException, evaluate, try)
+import qualified Codec.Compression.Zlib.Internal as ZI
 import Data.Bits (shiftL, (.&.), (.|.))
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as BL
 import Data.Int (Int64)
 import Data.Word (Word8)
 import GBSprite.Canvas (Canvas (..))
-import System.IO.Unsafe (unsafePerformIO)
 
 -- ---------------------------------------------------------------------------
 -- Shared constants
@@ -476,17 +474,31 @@ collectIdatChunks lbs = go (fromIntegral pngSignatureLength) []
 
 -- | Decompress concatenated IDAT data using zlib.
 --
--- Returns 'Left' on corrupt or invalid zlib data.
+-- Uses the streaming decompression API to handle errors as values
+-- rather than exceptions. Returns 'Left' on corrupt or invalid data.
 decompressIdat :: BL.ByteString -> Either String BS.ByteString
 decompressIdat compressed =
-  unsafePerformIO $ do
-    result <- try (evaluate (BL.toStrict (Z.decompress compressed)))
-    case result of
-      Left e ->
-        pure (Left ("PNG: zlib decompression failed: " ++ show (e :: SomeException)))
-      Right bs ->
-        pure (Right bs)
-{-# NOINLINE decompressIdat #-}
+  finalizeChunks $
+    ZI.foldDecompressStreamWithInput
+      collectChunk
+      endOfStream
+      streamError
+      (ZI.decompressST ZI.zlibFormat ZI.defaultDecompressParams)
+      compressed
+  where
+    collectChunk :: BS.ByteString -> Either String [BS.ByteString] -> Either String [BS.ByteString]
+    collectChunk chunk (Right chunks) = Right (chunk : chunks)
+    collectChunk _ err = err
+
+    endOfStream :: BL.ByteString -> Either String [BS.ByteString]
+    endOfStream _ = Right []
+
+    streamError :: ZI.DecompressError -> Either String [BS.ByteString]
+    streamError err = Left ("PNG: zlib decompression failed: " ++ show err)
+
+    finalizeChunks :: Either String [BS.ByteString] -> Either String BS.ByteString
+    finalizeChunks (Right chunks) = Right (BS.concat chunks)
+    finalizeChunks (Left msg) = Left msg
 
 -- | Reconstruct filtered PNG row data into raw pixel bytes.
 reconstructFilters :: BS.ByteString -> Int -> Int -> Int -> BS.ByteString

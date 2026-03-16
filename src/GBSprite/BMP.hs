@@ -1,11 +1,9 @@
--- | BMP file export.
+-- | Pure 32-bit BGRA BMP encoding.
 --
--- Writes 32-bit BGRA BMP files (bottom-up row order, no compression).
--- Same philosophy as gb-synth's WAV.hs — raw header bytes + pixel data,
--- zero external dependencies beyond bytestring.
+-- Encodes t'Canvas' values as BMP byte streams (bottom-up row order,
+-- no compression). For file I\/O, use "GBSprite.Export".
 module GBSprite.BMP
-  ( -- * Export
-    writeBmp,
+  ( -- * Encoding
     encodeBmp,
   )
 where
@@ -16,10 +14,6 @@ import qualified Data.ByteString.Lazy as BL
 import Data.Int (Int32)
 import Data.Word (Word32)
 import GBSprite.Canvas (Canvas (..))
-
--- | Write a canvas to a BMP file.
-writeBmp :: FilePath -> Canvas -> IO ()
-writeBmp path canvas = BL.writeFile path (encodeBmp canvas)
 
 -- | Encode a canvas as a BMP in memory.
 encodeBmp :: Canvas -> BL.ByteString

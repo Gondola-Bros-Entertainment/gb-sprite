@@ -1,11 +1,9 @@
--- | PNG file export.
+-- | Pure 32-bit RGBA PNG encoding.
 --
--- Writes 32-bit RGBA PNG files using zlib compression.
--- Same philosophy as "GBSprite.BMP" — raw chunk bytes + compressed
--- pixel data, single lightweight dependency (zlib).
+-- Encodes t'Canvas' values as PNG byte streams using zlib compression.
+-- For file I\/O, use "GBSprite.Export".
 module GBSprite.PNG
-  ( -- * Export
-    writePng,
+  ( -- * Encoding
     encodePng,
   )
 where
@@ -18,10 +16,6 @@ import qualified Data.ByteString.Lazy as BL
 import Data.List (foldl')
 import Data.Word (Word32, Word8)
 import GBSprite.Canvas (Canvas (..), generatePixelData)
-
--- | Write a canvas to a PNG file.
-writePng :: FilePath -> Canvas -> IO ()
-writePng path canvas = BL.writeFile path (encodePng canvas)
 
 -- | Encode a canvas as a PNG in memory.
 encodePng :: Canvas -> BL.ByteString

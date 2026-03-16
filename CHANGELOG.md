@@ -2,6 +2,11 @@
 
 ## 0.5.0.0
 
+### Breaking Changes
+
+- **`BMP.hs` and `PNG.hs` are now pure.** `writeBmp` and `writePng` have moved to `GBSprite.Export`. Import from `GBSprite.Export` instead of `GBSprite.BMP` or `GBSprite.PNG` for file I/O. The pure encoders `encodeBmp` and `encodePng` remain in their original modules.
+- **Eliminated `unsafePerformIO`** from `Import.hs`. PNG decompression now uses the zlib streaming API (`Codec.Compression.Zlib.Internal`) for fully pure, exception-free error handling.
+
 ### New Modules
 
 - **`GBSprite.Adjust`** — Canvas-wide color adjustments: grayscale, invert, tint, brightness, contrast, saturation, hue shift, color remapping, posterize, threshold, sepia.
@@ -39,7 +44,7 @@
 - **Fix Porter-Duff alpha blend** (`Color`): `alphaBlend` now correctly weights the destination channel by `dstA` when compositing semi-transparent colors. Previously, the destination RGB contribution was over-weighted when `dstA < 255`.
 - **Fix isometric diamond off-by-one** (`Isometric`): `drawDiamond` and `fillDiamond` now draw within the `tw x th` bounding box (previously drew `(tw+1) x (th+1)` pixels).
 - **Fix shear direction** (`Transform`): `shearH` and `shearV` now shift in the documented direction (positive values shift bottom rows right / right columns down).
-- **Fix PNG decompression exception** (`Import`): `decodePng` now returns `Left` on corrupt zlib data instead of throwing an impure exception.
+- **Fix PNG decompression exception** (`Import`): `decodePng` uses the zlib streaming API for pure error handling — no `unsafePerformIO`, no caught exceptions.
 - **Fix bloom luminance** (`Filter`): Bloom threshold now uses BT.709 perceptual weights instead of simple RGB average.
 - **Fix sprite sheet vertical padding** (`Sheet`): Shelf packing now applies padding between shelves vertically, not just horizontally.
 - **Fix Perlin gradient vectors** (`Noise`): Diagonal gradients now use exact `1/sqrt(2)` instead of truncated `0.707`.
