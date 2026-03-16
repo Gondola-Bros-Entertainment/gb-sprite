@@ -32,11 +32,12 @@ Companion to [gb-synth](https://github.com/Gondola-Bros-Entertainment/gb-synth) 
 - Sprite sheet packing (shelf bin packing) with metadata
 - Built-in 8x8 pixel font (full printable ASCII)
 - Procedural VFX generators (explosion, ring, glow, trail, flash, sparks)
-- Procedural noise (value noise, Perlin noise, Worley/cellular noise, FBM, turbulence)
+- Procedural noise (value noise, Perlin noise, simplex noise, Worley/cellular noise, FBM, turbulence)
 - Gradients (linear, radial, diagonal)
 - Nine-slice UI panel scaling
 - Ordered Bayer dithering for palette reduction
 - Palette extraction (median cut) and color quantization
+- LUT color grading with trilinear interpolation (identity, warm, cool, cinematic presets)
 - BMP and PNG import/export (32-bit RGBA, native — no external image libraries)
 
 **Core dependencies:** `base`, `bytestring`, `zlib`.
@@ -50,7 +51,7 @@ src/GBSprite/
 ├── Color.hs       RGBA type, HSL/HSV, named colors, lerp, multiply, alpha blend, color transforms
 ├── Canvas.hs      2D pixel grid (strict ByteString), drawing primitives, flood fill
 ├── Draw.hs        Thick lines, polygons, ellipses, arcs, Bezier/Catmull-Rom curves, AA lines
-├── Adjust.hs      Canvas-wide color adjustments (brightness, contrast, saturation, hue, sepia, etc.)
+├── Adjust.hs      Canvas-wide color adjustments, LUT color grading (brightness, contrast, saturation, etc.)
 ├── Filter.hs      Convolution filters (box/Gaussian blur, sharpen, edge detection, bloom)
 ├── Palette.hs     Indexed palettes, palette swap, extraction (median cut), quantization
 ├── Sprite.hs      Named sprite with origin, frames, bounding box, mirroring, trimming
@@ -62,7 +63,7 @@ src/GBSprite/
 ├── Isometric.hs   2:1 isometric projection, coordinate conversion, hit testing, depth sorting
 ├── Tilemap.hs     Tile-based map rendering from atlas
 ├── VFX.hs         Procedural effects (explosion, ring, glow, trail, flash, sparks)
-├── Noise.hs       Value noise, Perlin noise, Worley noise, FBM, turbulence
+├── Noise.hs       Value noise, Perlin noise, simplex noise, Worley noise, FBM, turbulence
 ├── Gradient.hs    Linear, radial, diagonal gradients
 ├── NineSlice.hs   UI panel scaling with border preservation
 ├── Dither.hs      Ordered Bayer dithering for palette reduction
@@ -91,7 +92,7 @@ Import (BMP/PNG) → Canvas ─────────────────�
 Add to your `.cabal` file:
 
 ```cabal
-build-depends: gb-sprite >= 0.4
+build-depends: gb-sprite >= 0.5
 ```
 
 ### Generating sprites
@@ -227,6 +228,16 @@ remapColors      :: [(Color, Color)] -> Canvas -> Canvas
 posterize        :: Int -> Canvas -> Canvas
 threshold        :: Word8 -> Canvas -> Canvas
 sepia            :: Canvas -> Canvas
+
+-- LUT color grading
+data ColorLUT = ColorLUT { lutSize :: !Int, lutData :: !BS.ByteString }
+
+identityLUT  :: Int -> ColorLUT                         -- no-op LUT
+applyLUT     :: ColorLUT -> Canvas -> Canvas            -- trilinear interpolation
+modifyLUT    :: ColorLUT -> (Color -> Color) -> ColorLUT -- compose adjustments
+warmLUT      :: Int -> ColorLUT                         -- sunset/firelight
+coolLUT      :: Int -> ColorLUT                         -- moonlight/underwater
+cinematicLUT :: Int -> ColorLUT                         -- teal-and-orange
 ```
 
 ### Filter
@@ -262,6 +273,7 @@ valueNoise      :: Int -> Int -> Int -> Double -> Canvas
 valueNoiseColor :: Int -> Int -> Int -> Double -> Color -> Color -> Canvas
 fbm             :: Int -> Int -> Int -> Int -> Double -> Canvas
 perlinNoise     :: Int -> Int -> Int -> Double -> Canvas
+simplexNoise    :: Int -> Int -> Int -> Double -> Canvas
 worleyNoise     :: Int -> Int -> Int -> Int -> Double -> Canvas
 turbulence      :: Int -> Int -> Int -> Int -> Double -> Canvas
 ```
@@ -299,7 +311,7 @@ fromColors     :: [Color] -> Palette
 paletteColor   :: Palette -> Int -> Color
 paletteSwap    :: Palette -> Palette -> Color -> Color
 paletteLerp    :: Double -> Palette -> Palette -> Palette
-extractPalette :: Int -> Canvas -> Palette            -- median cut extraction
+extractPalette :: Int -> [Color] -> Palette            -- median cut extraction
 quantizeColor  :: Palette -> Color -> Color
 ```
 
@@ -458,7 +470,7 @@ Requires [GHCup](https://www.haskell.org/ghcup/) with GHC >= 9.8.
 
 ```bash
 cabal build                              # Build library
-cabal test                               # Run all tests (591 pure tests)
+cabal test                               # Run all tests (615 pure tests)
 cabal build --ghc-options="-Werror"      # Warnings as errors
 cabal haddock                            # Generate docs
 ```
