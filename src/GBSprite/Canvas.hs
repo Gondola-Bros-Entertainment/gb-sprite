@@ -25,6 +25,15 @@ module GBSprite.Canvas
     floodFill,
     hLine,
 
+    -- * Transforms
+    mapPixels,
+    crop,
+    trimTransparent,
+    canvasOpacity,
+
+    -- * Folds
+    pixelFold,
+
     -- * Utilities
     clearCanvas,
     pixelIndex,
@@ -39,7 +48,7 @@ import qualified Data.ByteString as BS
 import Data.ByteString.Internal (unsafeCreate)
 import Data.Word (Word8)
 import Foreign.Storable (pokeByteOff)
-import GBSprite.Color (Color (..), transparent)
+import GBSprite.Color (Color (..), scaleAlpha, transparent)
 
 -- | A 2D RGBA pixel grid.
 --
@@ -286,6 +295,95 @@ floodFill canvas x y fillColor
                 ]
            in go filled (neighbors ++ rest)
 
+-- ---------------------------------------------------------------------------
+-- Transforms
+-- ---------------------------------------------------------------------------
+
+-- | Apply a function to every pixel.
+mapPixels :: (Color -> Color) -> Canvas -> Canvas
+mapPixels f canvas =
+  let w = cWidth canvas
+      h = cHeight canvas
+      src = cPixels canvas
+      pixels = generatePixelData (w * h * bytesPerPixel) $ \i ->
+        let pixIdx = i `div` bytesPerPixel
+            channel = i `mod` bytesPerPixel
+            srcIdx = pixIdx * bytesPerPixel
+            origColor =
+              Color
+                (BS.index src srcIdx)
+                (BS.index src (srcIdx + 1))
+                (BS.index src (srcIdx + 2))
+                (BS.index src (srcIdx + 3))
+            Color nr ng nb na = f origColor
+         in channelAt channel nr ng nb na
+   in Canvas w h pixels
+
+-- | Extract a rectangular region. Out-of-bounds pixels are transparent.
+crop :: Int -> Int -> Int -> Int -> Canvas -> Canvas
+crop cx cy cw ch canvas
+  | cw <= 0 || ch <= 0 = newCanvas 1 1 transparent
+  | otherwise =
+      let pixels = generatePixelData (cw * ch * bytesPerPixel) $ \i ->
+            let pixIdx = i `div` bytesPerPixel
+                channel = i `mod` bytesPerPixel
+                x = pixIdx `mod` cw + cx
+                y = pixIdx `div` cw + cy
+                Color r g b a = getPixel canvas x y
+             in channelAt channel r g b a
+       in Canvas cw ch pixels
+
+-- | Remove transparent borders, cropping to the bounding box of
+-- non-transparent pixels. Returns a 1x1 transparent canvas if
+-- all pixels are transparent.
+trimTransparent :: Canvas -> Canvas
+trimTransparent canvas =
+  let w = cWidth canvas
+      h = cHeight canvas
+      (bMinX, bMinY, bMaxX, bMaxY) =
+        pixelFold findBounds (w, h, negate 1, negate 1) canvas
+   in if bMaxX < 0 || bMaxY < 0
+        then newCanvas 1 1 transparent
+        else crop bMinX bMinY (bMaxX - bMinX + 1) (bMaxY - bMinY + 1) canvas
+  where
+    findBounds (!accMinX, !accMinY, !accMaxX, !accMaxY) x y (Color _ _ _ a)
+      | a == 0 = (accMinX, accMinY, accMaxX, accMaxY)
+      | otherwise = (min accMinX x, min accMinY y, max accMaxX x, max accMaxY y)
+
+-- | Scale the alpha of every pixel by a factor in @[0, 1]@.
+canvasOpacity :: Double -> Canvas -> Canvas
+canvasOpacity factor = mapPixels (scaleAlpha factor)
+
+-- ---------------------------------------------------------------------------
+-- Folds
+-- ---------------------------------------------------------------------------
+
+-- | Strict left fold over every pixel with its coordinates.
+pixelFold :: (a -> Int -> Int -> Color -> a) -> a -> Canvas -> a
+pixelFold f initial canvas =
+  let w = cWidth canvas
+      h = cHeight canvas
+      total = w * h
+      src = cPixels canvas
+      go !acc !pixIdx
+        | pixIdx >= total = acc
+        | otherwise =
+            let x = pixIdx `mod` w
+                y = pixIdx `div` w
+                idx = pixIdx * bytesPerPixel
+                color =
+                  Color
+                    (BS.index src idx)
+                    (BS.index src (idx + 1))
+                    (BS.index src (idx + 2))
+                    (BS.index src (idx + 3))
+             in go (f acc x y color) (pixIdx + 1)
+   in go initial 0
+
+-- ---------------------------------------------------------------------------
+-- Utilities
+-- ---------------------------------------------------------------------------
+
 -- | Clear a canvas to a solid color.
 clearCanvas :: Canvas -> Color -> Canvas
 clearCanvas canvas color =
@@ -309,3 +407,9 @@ pixelByte (Color r g b a) _w idx =
 -- | Convert a t'Color' to its byte representation.
 colorToBytes :: Color -> [Word8]
 colorToBytes (Color r g b a) = [r, g, b, a]
+
+channelAt :: Int -> Word8 -> Word8 -> Word8 -> Word8 -> Word8
+channelAt 0 r _ _ _ = r
+channelAt 1 _ g _ _ = g
+channelAt 2 _ _ b _ = b
+channelAt _ _ _ _ a = a

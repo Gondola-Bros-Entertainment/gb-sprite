@@ -13,10 +13,15 @@ module GBSprite.Sprite
     spriteHeight,
     frameCount,
     getFrame,
+
+    -- * Transforms
+    mirrorSprite,
+    trimSprite,
   )
 where
 
-import GBSprite.Canvas (Canvas (..))
+import GBSprite.Canvas (Canvas (..), trimTransparent)
+import GBSprite.Transform (flipH)
 
 -- | A bounding box for hit detection.
 data BoundingBox = BoundingBox
@@ -85,6 +90,17 @@ getFrame :: Sprite -> Int -> Maybe Canvas
 getFrame s idx
   | idx < 0 || idx >= frameCount s = Nothing
   | otherwise = safeIndex idx (spriteFrames s)
+
+-- | Generate a horizontally mirrored copy of a sprite (flip all frames).
+-- Useful for creating left-facing sprites from right-facing originals.
+mirrorSprite :: Sprite -> Sprite
+mirrorSprite sprite =
+  sprite {spriteFrames = map flipH (spriteFrames sprite)}
+
+-- | Trim transparent borders from every frame of a sprite.
+trimSprite :: Sprite -> Sprite
+trimSprite sprite =
+  sprite {spriteFrames = map trimTransparent (spriteFrames sprite)}
 
 -- | Safe list indexing without '!!'.
 safeIndex :: Int -> [a] -> Maybe a

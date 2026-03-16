@@ -17,6 +17,14 @@ module GBSprite.Draw
 
     -- * Curves
     drawBezier,
+    drawCubicBezier,
+    drawCatmullRom,
+
+    -- * Anti-aliased lines
+    drawAALine,
+
+    -- * Pattern fill
+    patternFill,
 
     -- * Rounded rectangles
     drawRoundRect,
@@ -25,8 +33,9 @@ module GBSprite.Draw
 where
 
 import Data.List (foldl')
-import GBSprite.Canvas (Canvas (..), drawLine, fillCircle, fillRect, hLine, setPixel)
-import GBSprite.Color (Color)
+import Data.Word (Word8)
+import GBSprite.Canvas (Canvas (..), drawLine, fillCircle, fillRect, getPixel, hLine, setPixel)
+import GBSprite.Color (Color (..), alphaBlend, withAlpha)
 
 -- | Draw a thick line by drawing filled circles at each Bresenham point.
 drawThickLine :: Canvas -> Int -> Int -> Int -> Int -> Int -> Color -> Canvas
@@ -160,6 +169,84 @@ drawBezier canvas (x0, y0) (ctrlX, ctrlY) (x1, y1) color =
     bezierSteps :: Int
     bezierSteps = 32
 
+-- | Draw a cubic Bezier curve from @p0@ through controls @c1@ and @c2@ to @p1@.
+drawCubicBezier :: Canvas -> (Int, Int) -> (Int, Int) -> (Int, Int) -> (Int, Int) -> Color -> Canvas
+drawCubicBezier canvas (x0, y0) (cx1, cy1) (cx2, cy2) (x1, y1) color =
+  let points =
+        [ let t = fromIntegral i / fromIntegral cubicBezierSteps :: Double
+              invT = 1.0 - t
+              invT2 = invT * invT
+              invT3 = invT2 * invT
+              t2 = t * t
+              t3 = t2 * t
+              px = round (invT3 * fromIntegral x0 + 3.0 * invT2 * t * fromIntegral cx1 + 3.0 * invT * t2 * fromIntegral cx2 + t3 * fromIntegral x1)
+              py = round (invT3 * fromIntegral y0 + 3.0 * invT2 * t * fromIntegral cy1 + 3.0 * invT * t2 * fromIntegral cy2 + t3 * fromIntegral y1)
+           in (px :: Int, py :: Int)
+        | i <- [0 .. cubicBezierSteps]
+        ]
+      edges = case points of
+        [] -> []
+        (_ : ps) -> zip points ps
+   in foldl' (\c ((ax, ay), (bx, by)) -> drawLine c ax ay bx by color) canvas edges
+
+-- | Draw a Catmull-Rom spline through the given control points.
+-- Requires at least 4 points; with fewer, draws straight lines.
+drawCatmullRom :: Canvas -> [(Int, Int)] -> Color -> Canvas
+drawCatmullRom canvas points color = case points of
+  [] -> canvas
+  [_] -> canvas
+  [(ax, ay), (bx, by)] -> drawLine canvas ax ay bx by color
+  [(ax, ay), (bx, by), (cx, cy)] ->
+    drawLine (drawLine canvas ax ay bx by color) bx by cx cy color
+  _ ->
+    let segments = catmullRomSegments points
+        allPoints = concatMap (catmullRomEvaluate catmullRomSteps) segments
+        edges = case allPoints of
+          [] -> []
+          (_ : ps) -> zip allPoints ps
+     in foldl' (\c ((ax, ay), (bx, by)) -> drawLine c ax ay bx by color) canvas edges
+
+-- | Draw an anti-aliased line using Wu's algorithm.
+drawAALine :: Canvas -> Int -> Int -> Int -> Int -> Color -> Canvas
+drawAALine canvas x0 y0 x1 y1 color =
+  let steep = abs (y1 - y0) > abs (x1 - x0)
+      (ax, ay, bx, by) =
+        if steep
+          then
+            let (sx, sy, ex, ey) = if y0 > y1 then (x1, y1, x0, y0) else (x0, y0, x1, y1)
+             in (sy, sx, ey, ex)
+          else
+            let (sx, sy, ex, ey) = if x0 > x1 then (x1, y1, x0, y0) else (x0, y0, x1, y1)
+             in (sx, sy, ex, ey)
+      dx = bx - ax
+      dy = by - ay
+      gradient = if dx == 0 then 1.0 else fromIntegral dy / fromIntegral dx :: Double
+   in wuLoop canvas steep color ax bx (fromIntegral ay) gradient
+
+-- | Fill a rectangular area with a repeating pattern from a source canvas.
+patternFill :: Canvas -> Int -> Int -> Int -> Int -> Canvas -> Canvas
+patternFill canvas rx ry rw rh patCanvas
+  | rw <= 0 || rh <= 0 = canvas
+  | otherwise =
+      let patW = max 1 (cWidth patCanvas)
+          patH = max 1 (cHeight patCanvas)
+       in foldl'
+            ( \c row ->
+                foldl'
+                  ( \acc col ->
+                      let px = col `mod` patW
+                          py = row `mod` patH
+                          pixel = getPixel patCanvas px py
+                       in if colorA pixel > 0
+                            then setPixel acc (rx + col) (ry + row) pixel
+                            else acc
+                  )
+                  c
+                  [0 .. rw - 1]
+            )
+            canvas
+            [0 .. rh - 1]
+
 -- | Draw a rounded rectangle outline.
 drawRoundRect :: Canvas -> Int -> Int -> Int -> Int -> Int -> Color -> Canvas
 drawRoundRect canvas x y w h radius color
@@ -196,6 +283,77 @@ fillRoundRect canvas x y w h radius color
 -- ---------------------------------------------------------------------------
 -- Internal helpers
 -- ---------------------------------------------------------------------------
+
+cubicBezierSteps :: Int
+cubicBezierSteps = 48
+
+catmullRomSteps :: Int
+catmullRomSteps = 16
+
+catmullRomTension :: Double
+catmullRomTension = 0.5
+
+catmullRomSegments :: [(Int, Int)] -> [((Int, Int), (Int, Int), (Int, Int), (Int, Int))]
+catmullRomSegments pts = case pts of
+  (a : b : c : d : rest) -> (a, b, c, d) : catmullRomSegments (b : c : d : rest)
+  _ -> []
+
+catmullRomEvaluate :: Int -> ((Int, Int), (Int, Int), (Int, Int), (Int, Int)) -> [(Int, Int)]
+catmullRomEvaluate steps ((x0, y0), (x1, y1), (x2, y2), (x3, y3)) =
+  [ let t = fromIntegral i / fromIntegral steps :: Double
+        t2 = t * t
+        t3 = t2 * t
+        px =
+          round
+            ( catmullRomTension
+                * ( 2.0 * fromIntegral x1
+                      + (fromIntegral x2 - fromIntegral x0) * t
+                      + (2.0 * fromIntegral x0 - 5.0 * fromIntegral x1 + 4.0 * fromIntegral x2 - fromIntegral x3) * t2
+                      + (negate (fromIntegral x0) + 3.0 * fromIntegral x1 - 3.0 * fromIntegral x2 + fromIntegral x3) * t3
+                  )
+            )
+        py =
+          round
+            ( catmullRomTension
+                * ( 2.0 * fromIntegral y1
+                      + (fromIntegral y2 - fromIntegral y0) * t
+                      + (2.0 * fromIntegral y0 - 5.0 * fromIntegral y1 + 4.0 * fromIntegral y2 - fromIntegral y3) * t2
+                      + (negate (fromIntegral y0) + 3.0 * fromIntegral y1 - 3.0 * fromIntegral y2 + fromIntegral y3) * t3
+                  )
+            )
+     in (px :: Int, py :: Int)
+  | i <- [0 .. steps]
+  ]
+
+wuLoop :: Canvas -> Bool -> Color -> Int -> Int -> Double -> Double -> Canvas
+wuLoop canvas steep color startX endX yInter gradient =
+  go canvas startX yInter
+  where
+    go c x intery
+      | x > endX = c
+      | otherwise =
+          let iy = floor intery :: Int
+              frac = intery - fromIntegral iy
+              invFrac = 1.0 - frac
+              c1 = plotAA c steep x iy color invFrac
+              c2 = plotAA c1 steep x (iy + 1) color frac
+           in go c2 (x + 1) (intery + gradient)
+
+plotAA :: Canvas -> Bool -> Int -> Int -> Color -> Double -> Canvas
+plotAA canvas steep x y color intensity
+  | intensity <= 0 = canvas
+  | otherwise =
+      let (px, py) = if steep then (y, x) else (x, y)
+          bg = getPixel canvas px py
+          fg = withAlpha (clampByte (round (fromIntegral (colorA color) * intensity))) color
+          blended = alphaBlend fg bg
+       in setPixel canvas px py blended
+
+clampByte :: Int -> Word8
+clampByte n = fromIntegral (max 0 (min aaMaxChannel n))
+
+aaMaxChannel :: Int
+aaMaxChannel = 255
 
 -- | Generate Bresenham line points.
 bresenhamPoints :: Int -> Int -> Int -> Int -> [(Int, Int)]

@@ -6,23 +6,27 @@ module Main (main) where
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as BL
 import Data.Word (Word8)
-import GBSprite.Animation (Animation (..), LoopMode (..), animation, animationDone, animationFrame, loopAnimation, onceAnimation, pingPongAnimation)
+import GBSprite.Adjust (adjustBrightness, adjustContrast, adjustSaturation, applyTint, grayscale, invertColors, posterize, remapColor, remapColors, sepia, shiftHue, threshold)
+import GBSprite.Animation (Animation (..), LoopMode (..), animation, animationDone, animationFrame, blendFrames, loopAnimation, onceAnimation, pingPongAnimation)
 import GBSprite.BMP (encodeBmp, writeBmp)
-import GBSprite.Canvas (Canvas (..), clearCanvas, drawCircle, drawLine, drawRect, fillCircle, fillRect, floodFill, fromPixels, getPixel, hLine, inBounds, newCanvas, pixelIndex, setPixel)
-import GBSprite.Color (Color (..), alphaBlend, black, blue, cyan, darkGray, gray, green, lerp, lightGray, magenta, multiply, orange, pink, purple, red, scaleAlpha, transparent, white, withAlpha, yellow)
-import GBSprite.Compose (overlay, overlayAt, stamp, stampAlpha)
+import GBSprite.Canvas (Canvas (..), canvasOpacity, clearCanvas, crop, drawCircle, drawLine, drawRect, fillCircle, fillRect, floodFill, fromPixels, getPixel, hLine, inBounds, mapPixels, newCanvas, pixelFold, pixelIndex, setPixel, trimTransparent)
+import GBSprite.Color (Color (..), HSL (..), HSV (..), alphaBlend, black, blue, brightenColor, contrastColor, cyan, darkGray, fromHSL, fromHSV, gray, grayscaleColor, green, invertColor, lerp, lightGray, magenta, multiply, orange, pink, purple, red, saturateColor, scaleAlpha, shiftHueColor, tintColor, toHSL, toHSV, transparent, white, withAlpha, yellow)
+import GBSprite.Compose (BlendMode (..), blendCompose, maskCanvas, overlay, overlayAt, stamp, stampAlpha)
 import GBSprite.Dither (DitherMatrix (..), orderedDither)
-import GBSprite.Draw (drawArc, drawBezier, drawEllipse, drawPolygon, drawRoundRect, drawThickLine, fillEllipse, fillPolygon, fillRoundRect)
+import GBSprite.Draw (drawAALine, drawArc, drawBezier, drawCatmullRom, drawCubicBezier, drawEllipse, drawPolygon, drawRoundRect, drawThickLine, fillEllipse, fillPolygon, fillRoundRect, patternFill)
+import GBSprite.Filter (bloom, boxBlur, edgeDetect, gaussianBlur, sharpen)
 import GBSprite.Gradient (diagonalGradient, linearGradient, radialGradient)
+import GBSprite.Import (decodeBmp, decodePng)
+import GBSprite.Isometric (IsoConfig (..), defaultIsoConfig, drawDiamond, fillDiamond, isoDepthCompare, pointInDiamond, renderIsoMap, screenToWorld, worldToScreen)
 import GBSprite.NineSlice (NineSlice (..), nineSlice, renderNineSlice)
-import GBSprite.Noise (fbm, valueNoise, valueNoiseColor)
+import GBSprite.Noise (fbm, perlinNoise, turbulence, valueNoise, valueNoiseColor, worleyNoise)
 import GBSprite.PNG (encodePng, writePng)
-import GBSprite.Palette (Palette (..), fromColors, gameboy, grayscale4, grayscale8, nes, paletteColor, paletteSwap)
+import GBSprite.Palette (Palette (..), extractPalette, fromColors, gameboy, grayscale4, grayscale8, nes, paletteColor, paletteLerp, paletteSize, paletteSwap, quantizeColor)
 import GBSprite.Sheet (SheetEntry (..), SpriteSheet (..), packSheet)
-import GBSprite.Sprite (BoundingBox (..), Sprite (..), frameCount, getFrame, multiFrame, singleFrame, spriteHeight, spriteWidth)
+import GBSprite.Sprite (BoundingBox (..), Sprite (..), frameCount, getFrame, mirrorSprite, multiFrame, singleFrame, spriteHeight, spriteWidth, trimSprite)
 import GBSprite.Text (Font (..), defaultFont, renderChar, renderText, textHeight, textWidth)
 import GBSprite.Tilemap (TilemapConfig (..), renderTilemap)
-import GBSprite.Transform (dropShadow, flipH, flipV, outline, rotate180, rotate270, rotate90, scaleNearest)
+import GBSprite.Transform (dropShadow, flipH, flipV, outline, rotate180, rotate270, rotate90, rotateArbitrary, scaleBilinear, scaleNearest, scaleTo, shearH, shearV)
 import GBSprite.VFX (ExplosionConfig (..), GlowConfig (..), RingConfig (..), SparksConfig (..), TrailConfig (..), explosionFrames, flashFrames, glowPulseFrames, ringExpandFrames, sparksFrames, trailFrames)
 import System.Directory (removeFile)
 import System.Exit (exitFailure, exitSuccess)
@@ -83,22 +87,32 @@ main = do
   putStrLn (replicate 40 '-')
   bmpTests <- testBmpRoundtrip
   pngTests <- testPngRoundtrip
+  importTests <- testImport
   runTests
     ( testColor
         ++ testColorNamed
         ++ testColorInstances
+        ++ testColorHSL
+        ++ testColorTransforms
         ++ testCanvas
         ++ testCanvasAdvanced
+        ++ testCanvasOps
+        ++ testAdjust
         ++ testTransform
         ++ testTransformEffects
+        ++ testTransformNew
         ++ testCompose
         ++ testComposeAdvanced
+        ++ testComposeNew
         ++ testAnimation
         ++ testAnimationAdvanced
+        ++ testAnimationNew
         ++ testPalette
         ++ testPaletteBuiltins
+        ++ testPaletteNew
         ++ testSprite
         ++ testSpriteAdvanced
+        ++ testSpriteNew
         ++ testSheet
         ++ testSheetAdvanced
         ++ testText
@@ -113,9 +127,11 @@ main = do
         ++ testPngEncode
         ++ testDraw
         ++ testDrawAdvanced
+        ++ testDrawNew
         ++ testEllipse
         ++ testNoise
         ++ testNoiseAdvanced
+        ++ testNoiseNew
         ++ testGradient
         ++ testGradientAdvanced
         ++ testNineSlice
@@ -123,6 +139,9 @@ main = do
         ++ testDither
         ++ testDitherAdvanced
         ++ testTilemap
+        ++ testFilter
+        ++ testIsometric
+        ++ importTests
     )
 
 -- ---------------------------------------------------------------------------
@@ -2027,6 +2046,1199 @@ testTilemap =
        in assertTrue "tm eq" (tc == tc)
     )
   ]
+
+-- ---------------------------------------------------------------------------
+-- Color HSL/HSV tests
+-- ---------------------------------------------------------------------------
+
+testColorHSL :: [(String, TestResult)]
+testColorHSL =
+  [ ( "toHSL red hue is 0",
+      let HSL h _ _ = toHSL red
+       in assertTrue "red hue" (h < 1.0)
+    ),
+    ( "toHSL green hue is ~120",
+      let HSL h _ _ = toHSL green
+       in assertTrue "green hue" (abs (h - 120.0) < 1.0)
+    ),
+    ( "toHSL blue hue is ~240",
+      let HSL h _ _ = toHSL blue
+       in assertTrue "blue hue" (abs (h - 240.0) < 1.0)
+    ),
+    ( "toHSL white lightness is 1",
+      let HSL _ _ l = toHSL white
+       in assertTrue "white lightness" (abs (l - 1.0) < 0.01)
+    ),
+    ( "toHSL black lightness is 0",
+      let HSL _ _ l = toHSL black
+       in assertTrue "black lightness" (abs l < 0.01)
+    ),
+    ( "toHSL gray saturation is 0",
+      let HSL _ s _ = toHSL gray
+       in assertTrue "gray saturation" (abs s < 0.01)
+    ),
+    ( "fromHSL roundtrip red",
+      let hsl = toHSL red
+          Color rr rg rb _ = fromHSL hsl
+       in assertTrue "hsl roundtrip red" (rr == 255 && rg == 0 && rb == 0)
+    ),
+    ( "fromHSL roundtrip green",
+      let hsl = toHSL green
+          Color gr gg gb _ = fromHSL hsl
+       in assertTrue "hsl roundtrip green" (gr == 0 && gg == 255 && gb == 0)
+    ),
+    ( "fromHSL roundtrip blue",
+      let hsl = toHSL blue
+          Color br bg bb _ = fromHSL hsl
+       in assertTrue "hsl roundtrip blue" (br == 0 && bg == 0 && bb == 255)
+    ),
+    ( "fromHSL roundtrip white",
+      let Color wr wg wb _ = fromHSL (toHSL white)
+       in assertTrue "hsl roundtrip white" (wr == 255 && wg == 255 && wb == 255)
+    ),
+    ( "toHSV red hue is 0",
+      let HSV h _ _ = toHSV red
+       in assertTrue "hsv red hue" (h < 1.0)
+    ),
+    ( "toHSV red saturation is 1",
+      let HSV _ s _ = toHSV red
+       in assertTrue "hsv red sat" (abs (s - 1.0) < 0.01)
+    ),
+    ( "toHSV red value is 1",
+      let HSV _ _ v = toHSV red
+       in assertTrue "hsv red val" (abs (v - 1.0) < 0.01)
+    ),
+    ( "toHSV white value is 1 saturation is 0",
+      let HSV _ s v = toHSV white
+       in assertTrue "hsv white" (abs s < 0.01 && abs (v - 1.0) < 0.01)
+    ),
+    ( "fromHSV roundtrip red",
+      let hsv = toHSV red
+          Color rr rg rb _ = fromHSV hsv
+       in assertTrue "hsv roundtrip red" (rr == 255 && rg == 0 && rb == 0)
+    ),
+    ( "fromHSV roundtrip cyan",
+      let hsv = toHSV cyan
+          Color cr cg cb _ = fromHSV hsv
+       in assertTrue "hsv roundtrip cyan" (cr == 0 && cg == 255 && cb == 255)
+    ),
+    ( "HSL Show works",
+      assertTrue "hsl show" (not (null (show (toHSL red))))
+    ),
+    ( "HSV Show works",
+      assertTrue "hsv show" (not (null (show (toHSV red))))
+    ),
+    ( "HSL Eq works",
+      assertTrue "hsl eq" (toHSL red == toHSL red)
+    ),
+    ( "HSV Eq works",
+      assertTrue "hsv eq" (toHSV red == toHSV red)
+    )
+  ]
+
+-- ---------------------------------------------------------------------------
+-- Color transforms tests
+-- ---------------------------------------------------------------------------
+
+testColorTransforms :: [(String, TestResult)]
+testColorTransforms =
+  [ ( "tintColor white identity",
+      assertEqual "tint white" red (tintColor white red)
+    ),
+    ( "tintColor black zeros RGB",
+      let Color tr tg tb _ = tintColor black red
+       in assertTrue "tint black" (tr == 0 && tg == 0 && tb == 0)
+    ),
+    ( "tintColor preserves alpha",
+      let halfAlphaRed = withAlpha 128 red
+          tinted = tintColor green halfAlphaRed
+       in assertEqual "tint alpha" 128 (colorA tinted)
+    ),
+    ( "invertColor red gives cyan",
+      let inverted = invertColor red
+       in assertTrue "invert red" (colorR inverted == 0 && colorG inverted == 255 && colorB inverted == 255)
+    ),
+    ( "invertColor white gives black",
+      let Color ir ig ib _ = invertColor white
+       in assertTrue "invert white" (ir == 0 && ig == 0 && ib == 0)
+    ),
+    ( "invertColor preserves alpha",
+      let halfAlpha = withAlpha 128 red
+       in assertEqual "invert alpha" 128 (colorA (invertColor halfAlpha))
+    ),
+    ( "invertColor double invert is identity",
+      assertEqual "double invert" red (invertColor (invertColor red))
+    ),
+    ( "grayscaleColor gray is unchanged",
+      let Color gr gg gb _ = grayscaleColor gray
+       in assertTrue "gray unchanged" (gr == gg && gg == gb)
+    ),
+    ( "grayscaleColor preserves alpha",
+      assertEqual "gray alpha" 128 (colorA (grayscaleColor (withAlpha 128 red)))
+    ),
+    ( "grayscaleColor produces equal channels",
+      let Color gr gg gb _ = grayscaleColor red
+       in assertTrue "gray equal ch" (gr == gg && gg == gb)
+    ),
+    ( "brightenColor 0 is identity",
+      assertEqual "brighten 0" red (brightenColor 0.0 red)
+    ),
+    ( "brightenColor 1 gives white",
+      let Color br bg bb _ = brightenColor 1.0 red
+       in assertTrue "brighten max" (br == 255 && bg == 255 && bb == 255)
+    ),
+    ( "brightenColor -1 gives black",
+      let Color br bg bb _ = brightenColor (-1.0) red
+       in assertTrue "brighten min" (br == 0 && bg == 0 && bb == 0)
+    ),
+    ( "contrastColor 0 is identity",
+      assertEqual "contrast 0" red (contrastColor 0.0 red)
+    ),
+    ( "contrastColor preserves alpha",
+      assertEqual "contrast alpha" 128 (colorA (contrastColor 0.5 (withAlpha 128 red)))
+    ),
+    ( "saturateColor 0 is identity",
+      assertEqual "saturate 0" red (saturateColor 0.0 red)
+    ),
+    ( "saturateColor -1 desaturates",
+      let Color sr sg sb _ = saturateColor (-1.0) red
+       in assertTrue "desaturate" (sr == sg && sg == sb)
+    ),
+    ( "shiftHueColor 0 is identity",
+      let shifted = shiftHueColor 0.0 red
+       in assertTrue "shift 0" (colorR shifted == 255 && colorG shifted <= 1 && colorB shifted <= 1)
+    ),
+    ( "shiftHueColor 360 is identity",
+      let shifted = shiftHueColor 360.0 red
+       in assertTrue "shift 360" (colorR shifted == 255 && colorG shifted <= 1 && colorB shifted <= 1)
+    ),
+    ( "shiftHueColor 120 red gives green-ish",
+      let shifted = shiftHueColor 120.0 red
+       in assertTrue "shift 120" (colorG shifted > colorR shifted)
+    ),
+    ( "shiftHueColor preserves alpha",
+      assertEqual "shift alpha" 128 (colorA (shiftHueColor 90.0 (withAlpha 128 red)))
+    )
+  ]
+
+-- ---------------------------------------------------------------------------
+-- Canvas operations tests
+-- ---------------------------------------------------------------------------
+
+testCanvasOps :: [(String, TestResult)]
+testCanvasOps =
+  [ ( "mapPixels identity",
+      let c = newCanvas 4 4 red
+       in assertEqual "mapPixels id" c (mapPixels id c)
+    ),
+    ( "mapPixels inverts all pixels",
+      let c = newCanvas 4 4 red
+          inverted = mapPixels invertColor c
+          pixel = getPixel inverted 0 0
+       in assertTrue "mapPixels invert" (colorR pixel == 0 && colorG pixel == 255 && colorB pixel == 255)
+    ),
+    ( "mapPixels preserves dimensions",
+      let c = newCanvas 4 4 red
+          mapped = mapPixels id c
+       in assertEqual "mapPixels dims" (4, 4) (cWidth mapped, cHeight mapped)
+    ),
+    ( "crop extracts correct region",
+      let c = setPixel (newCanvas 8 8 transparent) 2 2 red
+          cropped = crop 2 2 4 4 c
+       in assertEqual "crop pixel" red (getPixel cropped 0 0)
+    ),
+    ( "crop dimensions correct",
+      let cropped = crop 0 0 4 4 (newCanvas 8 8 red)
+       in assertEqual "crop dims" (4, 4) (cWidth cropped, cHeight cropped)
+    ),
+    ( "crop zero width returns 1x1",
+      let cropped = crop 0 0 0 4 (newCanvas 8 8 red)
+       in assertEqual "crop zero w" (1, 1) (cWidth cropped, cHeight cropped)
+    ),
+    ( "crop out of bounds gives transparent",
+      let c = newCanvas 4 4 red
+          cropped = crop 2 2 8 8 c
+       in assertEqual "crop oob" transparent (getPixel cropped 6 6)
+    ),
+    ( "trimTransparent all transparent gives 1x1",
+      let trimmed = trimTransparent (newCanvas 8 8 transparent)
+       in assertEqual "trim all transparent" (1, 1) (cWidth trimmed, cHeight trimmed)
+    ),
+    ( "trimTransparent single pixel",
+      let c = setPixel (newCanvas 8 8 transparent) 4 4 red
+          trimmed = trimTransparent c
+       in assertTrue "trim single" (cWidth trimmed == 1 && cHeight trimmed == 1 && getPixel trimmed 0 0 == red)
+    ),
+    ( "trimTransparent full canvas unchanged dims",
+      let c = newCanvas 4 4 red
+          trimmed = trimTransparent c
+       in assertEqual "trim full" (4, 4) (cWidth trimmed, cHeight trimmed)
+    ),
+    ( "trimTransparent respects border",
+      let c = fillRect (newCanvas 8 8 transparent) 2 2 4 4 red
+          trimmed = trimTransparent c
+       in assertEqual "trim border" (4, 4) (cWidth trimmed, cHeight trimmed)
+    ),
+    ( "canvasOpacity 1.0 is identity for opaque",
+      let c = newCanvas 4 4 red
+       in assertEqual "opacity 1" c (canvasOpacity 1.0 c)
+    ),
+    ( "canvasOpacity 0.0 gives transparent alpha",
+      let c = newCanvas 4 4 red
+          faded = canvasOpacity 0.0 c
+       in assertEqual "opacity 0" 0 (colorA (getPixel faded 0 0))
+    ),
+    ( "canvasOpacity 0.5 halves alpha",
+      let c = newCanvas 4 4 red
+          faded = canvasOpacity 0.5 c
+          resultAlpha = colorA (getPixel faded 0 0)
+       in assertTrue "opacity half" (resultAlpha >= 127 && resultAlpha <= 128)
+    ),
+    ( "pixelFold counts all pixels",
+      let c = newCanvas 4 4 red
+          count = pixelFold (\acc _ _ _ -> acc + 1) (0 :: Int) c
+       in assertEqual "fold count" 16 count
+    ),
+    ( "pixelFold sums red channel",
+      let c = newCanvas 2 2 red
+          totalR = pixelFold (\acc _ _ (Color r _ _ _) -> acc + fromIntegral r) (0 :: Int) c
+       in assertEqual "fold sum" (4 * 255) totalR
+    ),
+    ( "pixelFold empty canvas (1x1)",
+      let c = newCanvas 1 1 red
+          count = pixelFold (\acc _ _ _ -> acc + 1) (0 :: Int) c
+       in assertEqual "fold 1x1" 1 count
+    )
+  ]
+
+-- ---------------------------------------------------------------------------
+-- Adjust tests
+-- ---------------------------------------------------------------------------
+
+testAdjust :: [(String, TestResult)]
+testAdjust =
+  [ ( "grayscale canvas produces equal channels",
+      let c = grayscale (newCanvas 4 4 red)
+          Color gr gg gb _ = getPixel c 0 0
+       in assertTrue "grayscale equal" (gr == gg && gg == gb)
+    ),
+    ( "grayscale preserves dimensions",
+      let c = grayscale (newCanvas 4 4 red)
+       in assertEqual "grayscale dims" (4, 4) (cWidth c, cHeight c)
+    ),
+    ( "invertColors double invert is identity",
+      let c = newCanvas 4 4 red
+       in assertEqual "invert identity" c (invertColors (invertColors c))
+    ),
+    ( "invertColors produces inverted pixel",
+      let c = invertColors (newCanvas 4 4 red)
+          pixel = getPixel c 0 0
+       in assertTrue "invert pixel" (colorR pixel == 0 && colorG pixel == 255 && colorB pixel == 255)
+    ),
+    ( "applyTint white is identity",
+      let c = newCanvas 4 4 red
+       in assertEqual "tint white id" c (applyTint white c)
+    ),
+    ( "applyTint preserves dimensions",
+      assertEqual "tint dims" (4, 4) (let c = applyTint red (newCanvas 4 4 white) in (cWidth c, cHeight c))
+    ),
+    ( "adjustBrightness 0 is identity",
+      let c = newCanvas 4 4 red
+       in assertEqual "bright 0" c (adjustBrightness 0.0 c)
+    ),
+    ( "adjustBrightness 1 gives white RGB",
+      let c = adjustBrightness 1.0 (newCanvas 4 4 red)
+          Color br bg bb _ = getPixel c 0 0
+       in assertTrue "bright max" (br == 255 && bg == 255 && bb == 255)
+    ),
+    ( "adjustContrast 0 is identity",
+      let c = newCanvas 4 4 red
+       in assertEqual "contrast 0 id" c (adjustContrast 0.0 c)
+    ),
+    ( "adjustContrast preserves dimensions",
+      assertEqual "contrast dims" (4, 4) (let c = adjustContrast 0.5 (newCanvas 4 4 red) in (cWidth c, cHeight c))
+    ),
+    ( "adjustSaturation 0 is identity",
+      let c = newCanvas 4 4 red
+       in assertEqual "saturate 0 id" c (adjustSaturation 0.0 c)
+    ),
+    ( "shiftHue preserves dimensions",
+      assertEqual "hue dims" (4, 4) (let c = shiftHue 90.0 (newCanvas 4 4 red) in (cWidth c, cHeight c))
+    ),
+    ( "remapColor replaces matching color",
+      let c = newCanvas 4 4 red
+          remapped = remapColor red blue c
+       in assertEqual "remap pixel" blue (getPixel remapped 0 0)
+    ),
+    ( "remapColor leaves non-matching",
+      let c = newCanvas 4 4 green
+          remapped = remapColor red blue c
+       in assertEqual "remap no match" green (getPixel remapped 0 0)
+    ),
+    ( "remapColors replaces first match",
+      let c = newCanvas 4 4 red
+          remapped = remapColors [(red, blue), (red, green)] c
+       in assertEqual "remap first" blue (getPixel remapped 0 0)
+    ),
+    ( "remapColors empty mapping is identity",
+      let c = newCanvas 4 4 red
+       in assertEqual "remap empty" c (remapColors [] c)
+    ),
+    ( "posterize 2 levels produces binary",
+      let c = posterize 2 (newCanvas 4 4 gray)
+          Color pr pg pb _ = getPixel c 0 0
+       in assertTrue "posterize binary" (pr == pg && pg == pb)
+    ),
+    ( "posterize preserves dimensions",
+      assertEqual "posterize dims" (4, 4) (let c = posterize 4 (newCanvas 4 4 red) in (cWidth c, cHeight c))
+    ),
+    ( "threshold produces only black or white",
+      let c = threshold 128 (newCanvas 4 4 red)
+          pixel = getPixel c 0 0
+       in assertTrue "threshold bw" ((colorR pixel == 0 && colorG pixel == 0 && colorB pixel == 0) || (colorR pixel == 255 && colorG pixel == 255 && colorB pixel == 255))
+    ),
+    ( "threshold preserves alpha",
+      let c = threshold 128 (newCanvas 4 4 (withAlpha 128 red))
+       in assertEqual "threshold alpha" 128 (colorA (getPixel c 0 0))
+    ),
+    ( "sepia preserves dimensions",
+      assertEqual "sepia dims" (4, 4) (let c = sepia (newCanvas 4 4 red) in (cWidth c, cHeight c))
+    ),
+    ( "sepia produces warm tones",
+      let c = sepia (newCanvas 4 4 gray)
+          Color sr sg sb _ = getPixel c 0 0
+       in assertTrue "sepia warm" (sr >= sg && sg >= sb)
+    )
+  ]
+
+-- ---------------------------------------------------------------------------
+-- Transform new tests
+-- ---------------------------------------------------------------------------
+
+testTransformNew :: [(String, TestResult)]
+testTransformNew =
+  [ ( "rotateArbitrary 0 is identity",
+      let c = newCanvas 4 4 red
+       in assertEqual "rotate 0" c (rotateArbitrary 0.0 c)
+    ),
+    ( "rotateArbitrary preserves color",
+      let c = newCanvas 8 8 red
+          rotated = rotateArbitrary 45.0 c
+          centerX = cWidth rotated `div` 2
+          centerY = cHeight rotated `div` 2
+          pixel = getPixel rotated centerX centerY
+       in assertTrue "rotate color" (colorR pixel > 200 && colorA pixel > 200)
+    ),
+    ( "rotateArbitrary 90 swaps dimensions approx",
+      let c = newCanvas 8 4 red
+          rotated = rotateArbitrary 90.0 c
+       in assertTrue "rotate 90 dims" (cWidth rotated >= 4 && cHeight rotated >= 8)
+    ),
+    ( "scaleBilinear 2.0 doubles dimensions",
+      let c = newCanvas 4 4 red
+          scaled = scaleBilinear 2.0 c
+       in assertEqual "bilinear 2x" (8, 8) (cWidth scaled, cHeight scaled)
+    ),
+    ( "scaleBilinear 1.0 is identity",
+      let c = newCanvas 4 4 red
+       in assertEqual "bilinear 1x" c (scaleBilinear 1.0 c)
+    ),
+    ( "scaleBilinear 0.5 halves dimensions",
+      let c = newCanvas 8 8 red
+          scaled = scaleBilinear 0.5 c
+       in assertEqual "bilinear 0.5x" (4, 4) (cWidth scaled, cHeight scaled)
+    ),
+    ( "scaleBilinear preserves center color",
+      let c = newCanvas 4 4 red
+          scaled = scaleBilinear 2.0 c
+       in assertTrue "bilinear color" (colorR (getPixel scaled 4 4) > 200)
+    ),
+    ( "scaleBilinear zero factor returns identity",
+      let c = newCanvas 4 4 red
+       in assertEqual "bilinear zero" c (scaleBilinear 0.0 c)
+    ),
+    ( "scaleTo exact dimensions",
+      let c = newCanvas 4 4 red
+          scaled = scaleTo 10 6 c
+       in assertEqual "scaleTo dims" (10, 6) (cWidth scaled, cHeight scaled)
+    ),
+    ( "scaleTo 1x1 minimum",
+      let c = newCanvas 4 4 red
+          scaled = scaleTo 0 0 c
+       in assertEqual "scaleTo min" (1, 1) (cWidth scaled, cHeight scaled)
+    ),
+    ( "scaleTo preserves color",
+      let c = newCanvas 4 4 red
+          scaled = scaleTo 8 8 c
+       in assertTrue "scaleTo color" (colorR (getPixel scaled 4 4) > 200)
+    ),
+    ( "shearH preserves height",
+      let c = newCanvas 8 8 red
+          sheared = shearH 0.5 c
+       in assertEqual "shearH height" 8 (cHeight sheared)
+    ),
+    ( "shearH increases width",
+      let c = newCanvas 8 8 red
+          sheared = shearH 0.5 c
+       in assertTrue "shearH width" (cWidth sheared > 8)
+    ),
+    ( "shearH zero is identity",
+      let c = newCanvas 4 4 red
+       in assertEqual "shearH zero" c (shearH 0.0 c)
+    ),
+    ( "shearV preserves width",
+      let c = newCanvas 8 8 red
+          sheared = shearV 0.5 c
+       in assertEqual "shearV width" 8 (cWidth sheared)
+    ),
+    ( "shearV increases height",
+      let c = newCanvas 8 8 red
+          sheared = shearV 0.5 c
+       in assertTrue "shearV height" (cHeight sheared > 8)
+    ),
+    ( "shearV zero is identity",
+      let c = newCanvas 4 4 red
+       in assertEqual "shearV zero" c (shearV 0.0 c)
+    )
+  ]
+
+-- ---------------------------------------------------------------------------
+-- Draw new tests
+-- ---------------------------------------------------------------------------
+
+testDrawNew :: [(String, TestResult)]
+testDrawNew =
+  [ ( "drawCubicBezier preserves dimensions",
+      let c = drawCubicBezier (newCanvas drawNewSize drawNewSize transparent) (0, 0) (5, 15) (10, 15) (15, 0) red
+       in assertEqual "cubic dims" (drawNewSize, drawNewSize) (cWidth c, cHeight c)
+    ),
+    ( "drawCubicBezier draws start point",
+      let c = drawCubicBezier (newCanvas drawNewSize drawNewSize transparent) (0, 0) (5, 15) (10, 15) (15, 0) red
+       in assertEqual "cubic start" red (getPixel c 0 0)
+    ),
+    ( "drawCubicBezier draws end point",
+      let c = drawCubicBezier (newCanvas drawNewSize drawNewSize transparent) (0, 0) (5, 15) (10, 15) (15, 0) red
+       in assertEqual "cubic end" red (getPixel c 15 0)
+    ),
+    ( "drawCatmullRom empty list is no-op",
+      let c = newCanvas 8 8 transparent
+       in assertEqual "catmull empty" c (drawCatmullRom c [] red)
+    ),
+    ( "drawCatmullRom single point is no-op",
+      let c = newCanvas 8 8 transparent
+       in assertEqual "catmull single" c (drawCatmullRom c [(4, 4)] red)
+    ),
+    ( "drawCatmullRom two points draws line",
+      let c = drawCatmullRom (newCanvas drawNewSize drawNewSize transparent) [(0, 0), (15, 0)] red
+       in assertTrue "catmull two" (getPixel c 0 0 == red && getPixel c 15 0 == red)
+    ),
+    ( "drawCatmullRom four points draws through second and third",
+      let c = drawCatmullRom (newCanvas drawNewSize drawNewSize transparent) [(0, 8), (4, 8), (12, 8), (15, 8)] red
+       in assertTrue "catmull four" (getPixel c 4 8 == red && getPixel c 12 8 == red)
+    ),
+    ( "drawCatmullRom preserves dimensions",
+      let c = drawCatmullRom (newCanvas drawNewSize drawNewSize transparent) [(0, 0), (5, 10), (10, 5), (15, 15)] red
+       in assertEqual "catmull dims" (drawNewSize, drawNewSize) (cWidth c, cHeight c)
+    ),
+    ( "drawAALine preserves dimensions",
+      let c = drawAALine (newCanvas drawNewSize drawNewSize transparent) 0 0 15 15 red
+       in assertEqual "AA line dims" (drawNewSize, drawNewSize) (cWidth c, cHeight c)
+    ),
+    ( "drawAALine draws pixels along path",
+      let c = drawAALine (newCanvas drawNewSize drawNewSize transparent) 0 8 15 8 red
+       in assertTrue "AA line pixel" (colorR (getPixel c 8 8) > 0)
+    ),
+    ( "drawAALine horizontal draws endpoint",
+      let c = drawAALine (newCanvas drawNewSize drawNewSize transparent) 0 4 15 4 red
+       in assertTrue "AA horiz" (colorR (getPixel c 0 4) > 0 && colorR (getPixel c 15 4) > 0)
+    ),
+    ( "patternFill preserves canvas dimensions",
+      let c = newCanvas drawNewSize drawNewSize transparent
+          pat = newCanvas 2 2 red
+          filled = patternFill c 0 0 drawNewSize drawNewSize pat
+       in assertEqual "pattern dims" (drawNewSize, drawNewSize) (cWidth filled, cHeight filled)
+    ),
+    ( "patternFill tiles pattern",
+      let c = newCanvas drawNewSize drawNewSize transparent
+          pat = newCanvas 2 2 red
+          filled = patternFill c 0 0 drawNewSize drawNewSize pat
+       in assertTrue "pattern tile" (getPixel filled 0 0 == red && getPixel filled 4 4 == red)
+    ),
+    ( "patternFill zero width is no-op",
+      let c = newCanvas 8 8 transparent
+          pat = newCanvas 2 2 red
+       in assertEqual "pattern zero w" c (patternFill c 0 0 0 4 pat)
+    ),
+    ( "patternFill zero height is no-op",
+      let c = newCanvas 8 8 transparent
+          pat = newCanvas 2 2 red
+       in assertEqual "pattern zero h" c (patternFill c 0 0 4 0 pat)
+    )
+  ]
+  where
+    drawNewSize :: Int
+    drawNewSize = 16
+
+-- ---------------------------------------------------------------------------
+-- Compose new tests
+-- ---------------------------------------------------------------------------
+
+testComposeNew :: [(String, TestResult)]
+testComposeNew =
+  [ ( "BlendMode Show works",
+      assertTrue "blend show" (not (null (show BlendMultiply)))
+    ),
+    ( "BlendMode Eq works",
+      assertTrue "blend eq" (BlendMultiply == BlendMultiply && BlendMultiply /= BlendScreen)
+    ),
+    ( "all BlendMode constructors exist",
+      let modes = [BlendMultiply, BlendScreen, BlendOverlay, BlendAdditive, BlendSoftLight, BlendDifference]
+       in assertEqual "blend count" 6 (length modes)
+    ),
+    ( "blendCompose Multiply white on red gives red",
+      let dst = newCanvas 4 4 red
+          src = newCanvas 4 4 white
+          result = blendCompose BlendMultiply dst 0 0 src
+          pixel = getPixel result 0 0
+       in assertTrue "blend mul" (colorR pixel >= 254 && colorG pixel <= 1 && colorB pixel <= 1)
+    ),
+    ( "blendCompose Screen black on red gives red",
+      let dst = newCanvas 4 4 red
+          src = newCanvas 4 4 black
+          result = blendCompose BlendScreen dst 0 0 src
+          pixel = getPixel result 0 0
+       in assertTrue "blend screen" (colorR pixel >= 254)
+    ),
+    ( "blendCompose Additive saturates at 255",
+      let dst = newCanvas 4 4 red
+          src = newCanvas 4 4 red
+          result = blendCompose BlendAdditive dst 0 0 src
+       in assertEqual "blend add" 255 (colorR (getPixel result 0 0))
+    ),
+    ( "blendCompose Difference same gives black",
+      let dst = newCanvas 4 4 red
+          src = newCanvas 4 4 red
+          result = blendCompose BlendDifference dst 0 0 src
+       in assertEqual "blend diff" 0 (colorR (getPixel result 0 0))
+    ),
+    ( "blendCompose preserves dimensions",
+      let dst = newCanvas 8 8 red
+          src = newCanvas 4 4 blue
+          result = blendCompose BlendOverlay dst 0 0 src
+       in assertEqual "blend dims" (8, 8) (cWidth result, cHeight result)
+    ),
+    ( "blendCompose offset works",
+      let dst = newCanvas 8 8 red
+          src = newCanvas 4 4 blue
+          result = blendCompose BlendMultiply dst 4 4 src
+       in assertEqual "blend offset outside" red (getPixel result 0 0)
+    ),
+    ( "maskCanvas same size preserves opaque",
+      let c = newCanvas 4 4 red
+          mask = newCanvas 4 4 white
+          result = maskCanvas c mask
+       in assertEqual "mask opaque" 255 (colorA (getPixel result 0 0))
+    ),
+    ( "maskCanvas transparent mask zeroes alpha",
+      let c = newCanvas 4 4 red
+          mask = newCanvas 4 4 transparent
+          result = maskCanvas c mask
+       in assertEqual "mask transparent" 0 (colorA (getPixel result 0 0))
+    ),
+    ( "maskCanvas preserves RGB",
+      let c = newCanvas 4 4 red
+          mask = newCanvas 4 4 (withAlpha 128 white)
+          result = maskCanvas c mask
+       in assertTrue "mask rgb" (colorR (getPixel result 0 0) == 255 && colorG (getPixel result 0 0) == 0)
+    ),
+    ( "maskCanvas preserves dimensions",
+      let result = maskCanvas (newCanvas 8 4 red) (newCanvas 8 4 white)
+       in assertEqual "mask dims" (8, 4) (cWidth result, cHeight result)
+    )
+  ]
+
+-- ---------------------------------------------------------------------------
+-- Palette new tests
+-- ---------------------------------------------------------------------------
+
+testPaletteNew :: [(String, TestResult)]
+testPaletteNew =
+  [ ( "paletteSize returns correct count",
+      assertEqual "pal size 3" 3 (paletteSize (fromColors [red, green, blue]))
+    ),
+    ( "paletteSize empty is 0",
+      assertEqual "pal size 0" 0 (paletteSize (fromColors []))
+    ),
+    ( "paletteSize gameboy is 4",
+      assertEqual "pal size gb" 4 (paletteSize gameboy)
+    ),
+    ( "paletteLerp t=0 gives first palette",
+      let pal1 = fromColors [red, green]
+          pal2 = fromColors [blue, white]
+          result = paletteLerp 0.0 pal1 pal2
+       in assertEqual "lerp t0" red (paletteColor result 0)
+    ),
+    ( "paletteLerp t=1 gives second palette",
+      let pal1 = fromColors [red, green]
+          pal2 = fromColors [blue, white]
+          result = paletteLerp 1.0 pal1 pal2
+       in assertEqual "lerp t1" blue (paletteColor result 0)
+    ),
+    ( "paletteLerp preserves length",
+      let pal1 = fromColors [red, green]
+          pal2 = fromColors [blue, white]
+          result = paletteLerp 0.5 pal1 pal2
+       in assertEqual "lerp len" 2 (paletteSize result)
+    ),
+    ( "paletteLerp different lengths pads",
+      let pal1 = fromColors [red, green, blue]
+          pal2 = fromColors [white]
+          result = paletteLerp 0.5 pal1 pal2
+       in assertEqual "lerp pad" 3 (paletteSize result)
+    ),
+    ( "extractPalette returns up to n colors",
+      let colors = [red, green, blue, red, green, blue]
+          pal = extractPalette 3 colors
+       in assertTrue "extract count" (paletteSize pal <= 3)
+    ),
+    ( "extractPalette empty input gives empty palette",
+      assertEqual "extract empty" 0 (paletteSize (extractPalette 4 []))
+    ),
+    ( "extractPalette 0 count gives empty palette",
+      assertEqual "extract 0" 0 (paletteSize (extractPalette 0 [red, green]))
+    ),
+    ( "extractPalette two distinct colors",
+      let pal = extractPalette 2 [red, red, blue, blue]
+       in assertTrue "extract two" (paletteSize pal >= 1 && paletteSize pal <= 2)
+    ),
+    ( "quantizeColor maps to nearest",
+      let pal = fromColors [black, white]
+          nearBlack = Color 10 10 10 255
+          result = quantizeColor pal nearBlack
+       in assertEqual "quantize near black" black result
+    ),
+    ( "quantizeColor exact match returns same",
+      let pal = fromColors [red, green, blue]
+       in assertEqual "quantize exact" red (quantizeColor pal red)
+    ),
+    ( "quantizeColor empty palette returns input",
+      assertEqual "quantize empty" red (quantizeColor (fromColors []) red)
+    )
+  ]
+
+-- ---------------------------------------------------------------------------
+-- Noise new tests
+-- ---------------------------------------------------------------------------
+
+testNoiseNew :: [(String, TestResult)]
+testNoiseNew =
+  [ ( "perlinNoise dimensions correct",
+      let c = perlinNoise noiseNewSize noiseNewSize noiseNewSeed noiseNewScale
+       in assertEqual "perlin dims" (noiseNewSize, noiseNewSize) (cWidth c, cHeight c)
+    ),
+    ( "perlinNoise deterministic",
+      let c1 = perlinNoise noiseNewSize noiseNewSize noiseNewSeed noiseNewScale
+          c2 = perlinNoise noiseNewSize noiseNewSize noiseNewSeed noiseNewScale
+       in assertEqual "perlin determ" c1 c2
+    ),
+    ( "perlinNoise different seeds differ",
+      let c1 = perlinNoise noiseNewSize noiseNewSize noiseNewSeed noiseNewScale
+          c2 = perlinNoise noiseNewSize noiseNewSize (noiseNewSeed + 1) noiseNewScale
+       in assertTrue "perlin seeds" (c1 /= c2)
+    ),
+    ( "perlinNoise all pixels opaque",
+      let c = perlinNoise 8 8 42 4.0
+          allOpaque = all (\(x, y) -> colorA (getPixel c x y) == 255) [(x, y) | x <- [0 .. 7], y <- [0 .. 7]]
+       in assertTrue "perlin opaque" allOpaque
+    ),
+    ( "perlinNoise values in valid range",
+      let c = perlinNoise 8 8 42 4.0
+          allValid = all (\(x, y) -> colorR (getPixel c x y) <= 255) [(x, y) | x <- [0 .. 7], y <- [0 .. 7]]
+       in assertTrue "perlin range" allValid
+    ),
+    ( "worleyNoise dimensions correct",
+      let c = worleyNoise noiseNewSize noiseNewSize noiseNewSeed worleyPoints noiseNewScale
+       in assertEqual "worley dims" (noiseNewSize, noiseNewSize) (cWidth c, cHeight c)
+    ),
+    ( "worleyNoise deterministic",
+      let c1 = worleyNoise noiseNewSize noiseNewSize noiseNewSeed worleyPoints noiseNewScale
+          c2 = worleyNoise noiseNewSize noiseNewSize noiseNewSeed worleyPoints noiseNewScale
+       in assertEqual "worley determ" c1 c2
+    ),
+    ( "worleyNoise different seeds differ",
+      let c1 = worleyNoise noiseNewSize noiseNewSize noiseNewSeed worleyPoints noiseNewScale
+          c2 = worleyNoise noiseNewSize noiseNewSize (noiseNewSeed + 1) worleyPoints noiseNewScale
+       in assertTrue "worley seeds" (c1 /= c2)
+    ),
+    ( "worleyNoise all pixels opaque",
+      let c = worleyNoise 8 8 42 3 4.0
+          allOpaque = all (\(x, y) -> colorA (getPixel c x y) == 255) [(x, y) | x <- [0 .. 7], y <- [0 .. 7]]
+       in assertTrue "worley opaque" allOpaque
+    ),
+    ( "turbulence dimensions correct",
+      let c = turbulence noiseNewSize noiseNewSize noiseNewSeed turbOctaves noiseNewScale
+       in assertEqual "turbulence dims" (noiseNewSize, noiseNewSize) (cWidth c, cHeight c)
+    ),
+    ( "turbulence deterministic",
+      let c1 = turbulence noiseNewSize noiseNewSize noiseNewSeed turbOctaves noiseNewScale
+          c2 = turbulence noiseNewSize noiseNewSize noiseNewSeed turbOctaves noiseNewScale
+       in assertEqual "turbulence determ" c1 c2
+    ),
+    ( "turbulence different seeds differ",
+      let c1 = turbulence noiseNewSize noiseNewSize noiseNewSeed turbOctaves noiseNewScale
+          c2 = turbulence noiseNewSize noiseNewSize (noiseNewSeed + 1) turbOctaves noiseNewScale
+       in assertTrue "turbulence seeds" (c1 /= c2)
+    ),
+    ( "turbulence all pixels opaque",
+      let c = turbulence 8 8 42 3 4.0
+          allOpaque = all (\(x, y) -> colorA (getPixel c x y) == 255) [(x, y) | x <- [0 .. 7], y <- [0 .. 7]]
+       in assertTrue "turbulence opaque" allOpaque
+    ),
+    ( "turbulence different octaves differ",
+      let c1 = turbulence 8 8 42 1 4.0
+          c2 = turbulence 8 8 42 4 4.0
+       in assertTrue "turbulence octaves" (c1 /= c2)
+    )
+  ]
+  where
+    noiseNewSize :: Int
+    noiseNewSize = 16
+    noiseNewSeed :: Int
+    noiseNewSeed = 42
+    noiseNewScale :: Double
+    noiseNewScale = 4.0
+    worleyPoints :: Int
+    worleyPoints = 3
+    turbOctaves :: Int
+    turbOctaves = 3
+
+-- ---------------------------------------------------------------------------
+-- Sprite new tests
+-- ---------------------------------------------------------------------------
+
+testSpriteNew :: [(String, TestResult)]
+testSpriteNew =
+  [ ( "mirrorSprite flips all frames",
+      let c = setPixel (newCanvas 8 8 transparent) 0 0 red
+          sprite = singleFrame "test" c
+          mirrored = mirrorSprite sprite
+       in case getFrame mirrored 0 of
+            Just f -> assertEqual "mirror pixel" red (getPixel f 7 0)
+            Nothing -> Left "mirrorSprite: no frame"
+    ),
+    ( "mirrorSprite preserves frame count",
+      let frames = [newCanvas 4 4 red, newCanvas 4 4 green]
+          sprite = multiFrame "test" 0 0 frames
+       in assertEqual "mirror count" 2 (frameCount (mirrorSprite sprite))
+    ),
+    ( "mirrorSprite preserves name",
+      let sprite = singleFrame "hero" (newCanvas 4 4 red)
+       in assertEqual "mirror name" "hero" (spriteName (mirrorSprite sprite))
+    ),
+    ( "mirrorSprite double mirror is identity pixel",
+      let c = setPixel (newCanvas 8 8 transparent) 2 3 red
+          sprite = singleFrame "test" c
+          double = mirrorSprite (mirrorSprite sprite)
+       in case getFrame double 0 of
+            Just f -> assertEqual "mirror double" red (getPixel f 2 3)
+            Nothing -> Left "mirrorSprite double: no frame"
+    ),
+    ( "trimSprite trims all frames",
+      let c = setPixel (newCanvas 8 8 transparent) 4 4 red
+          sprite = singleFrame "test" c
+          trimmed = trimSprite sprite
+       in case getFrame trimmed 0 of
+            Just f -> assertEqual "trim pixel" (1, 1) (cWidth f, cHeight f)
+            Nothing -> Left "trimSprite: no frame"
+    ),
+    ( "trimSprite preserves frame count",
+      let frames = [setPixel (newCanvas 8 8 transparent) 4 4 red, setPixel (newCanvas 8 8 transparent) 3 3 green]
+          sprite = multiFrame "test" 0 0 frames
+       in assertEqual "trim count" 2 (frameCount (trimSprite sprite))
+    ),
+    ( "trimSprite preserves name",
+      assertEqual "trim name" "hero" (spriteName (trimSprite (singleFrame "hero" (newCanvas 4 4 red))))
+    ),
+    ( "trimSprite all transparent gives 1x1 frames",
+      let sprite = singleFrame "empty" (newCanvas 8 8 transparent)
+          trimmed = trimSprite sprite
+       in case getFrame trimmed 0 of
+            Just f -> assertEqual "trim all transparent" (1, 1) (cWidth f, cHeight f)
+            Nothing -> Left "trimSprite empty: no frame"
+    )
+  ]
+
+-- ---------------------------------------------------------------------------
+-- Animation new tests
+-- ---------------------------------------------------------------------------
+
+testAnimationNew :: [(String, TestResult)]
+testAnimationNew =
+  [ ( "blendFrames t=0 gives first canvas",
+      let ca = newCanvas 4 4 red
+          cb = newCanvas 4 4 blue
+          result = blendFrames 0.0 ca cb
+       in assertEqual "blend t0" red (getPixel result 0 0)
+    ),
+    ( "blendFrames t=1 gives second canvas",
+      let ca = newCanvas 4 4 red
+          cb = newCanvas 4 4 blue
+          result = blendFrames 1.0 ca cb
+       in assertEqual "blend t1" blue (getPixel result 0 0)
+    ),
+    ( "blendFrames t=0.5 mixes colors",
+      let ca = newCanvas 4 4 black
+          cb = newCanvas 4 4 white
+          result = blendFrames 0.5 ca cb
+          pixel = getPixel result 0 0
+       in assertTrue "blend half" (colorR pixel >= 127 && colorR pixel <= 128)
+    ),
+    ( "blendFrames preserves dimensions of first canvas",
+      let ca = newCanvas 8 4 red
+          cb = newCanvas 8 4 blue
+          result = blendFrames 0.5 ca cb
+       in assertEqual "blend dims" (8, 4) (cWidth result, cHeight result)
+    ),
+    ( "blendFrames same canvas gives same canvas",
+      let c = newCanvas 4 4 red
+       in assertEqual "blend same" c (blendFrames 0.5 c c)
+    ),
+    ( "blendFrames different sizes uses first dims",
+      let ca = newCanvas 4 4 red
+          cb = newCanvas 8 8 blue
+          result = blendFrames 0.5 ca cb
+       in assertEqual "blend diff size" (4, 4) (cWidth result, cHeight result)
+    )
+  ]
+
+-- ---------------------------------------------------------------------------
+-- Filter tests
+-- ---------------------------------------------------------------------------
+
+testFilter :: [(String, TestResult)]
+testFilter =
+  [ ( "boxBlur preserves dimensions",
+      let c = boxBlur 1 (newCanvas filterSize filterSize red)
+       in assertEqual "boxblur dims" (filterSize, filterSize) (cWidth c, cHeight c)
+    ),
+    ( "boxBlur radius 0 is identity",
+      let c = newCanvas filterSize filterSize red
+       in assertEqual "boxblur r0" c (boxBlur 0 c)
+    ),
+    ( "boxBlur solid color unchanged",
+      let c = newCanvas filterSize filterSize red
+          blurred = boxBlur 2 c
+       in assertEqual "boxblur solid" red (getPixel blurred (filterSize `div` 2) (filterSize `div` 2))
+    ),
+    ( "boxBlur blurs boundary",
+      let c = fillRect (newCanvas filterSize filterSize black) 0 0 (filterSize `div` 2) filterSize white
+          blurred = boxBlur 2 c
+          borderPixel = getPixel blurred (filterSize `div` 2) (filterSize `div` 2)
+       in assertTrue "boxblur boundary" (colorR borderPixel > 0 && colorR borderPixel < 255)
+    ),
+    ( "gaussianBlur preserves dimensions",
+      let c = gaussianBlur 1 (newCanvas filterSize filterSize red)
+       in assertEqual "gaussian dims" (filterSize, filterSize) (cWidth c, cHeight c)
+    ),
+    ( "gaussianBlur radius 0 is identity",
+      let c = newCanvas filterSize filterSize red
+       in assertEqual "gaussian r0" c (gaussianBlur 0 c)
+    ),
+    ( "gaussianBlur solid color unchanged",
+      let c = newCanvas filterSize filterSize red
+          blurred = gaussianBlur 1 c
+       in assertEqual "gaussian solid" red (getPixel blurred (filterSize `div` 2) (filterSize `div` 2))
+    ),
+    ( "sharpen preserves dimensions",
+      let c = sharpen (newCanvas filterSize filterSize red)
+       in assertEqual "sharpen dims" (filterSize, filterSize) (cWidth c, cHeight c)
+    ),
+    ( "sharpen solid color approximately unchanged",
+      let c = newCanvas filterSize filterSize red
+          sharpened = sharpen c
+          pixel = getPixel sharpened (filterSize `div` 2) (filterSize `div` 2)
+       in assertTrue "sharpen solid" (colorR pixel >= 254)
+    ),
+    ( "edgeDetect preserves dimensions",
+      let c = edgeDetect (newCanvas filterSize filterSize red)
+       in assertEqual "edge dims" (filterSize, filterSize) (cWidth c, cHeight c)
+    ),
+    ( "edgeDetect solid color gives dark result",
+      let c = newCanvas filterSize filterSize red
+          edges = edgeDetect c
+          pixel = getPixel edges (filterSize `div` 2) (filterSize `div` 2)
+       in assertTrue "edge solid" (colorR pixel < 10)
+    ),
+    ( "edgeDetect detects boundary",
+      let c = fillRect (newCanvas filterSize filterSize black) 2 2 (filterSize - 4) (filterSize - 4) white
+          edges = edgeDetect c
+          borderPixel = getPixel edges 2 (filterSize `div` 2)
+       in assertTrue "edge boundary" (colorR borderPixel > 0)
+    ),
+    ( "bloom preserves dimensions",
+      let c = bloom 1 0.5 (newCanvas filterSize filterSize red)
+       in assertEqual "bloom dims" (filterSize, filterSize) (cWidth c, cHeight c)
+    ),
+    ( "bloom with threshold 0 adds brightness",
+      let c = newCanvas filterSize filterSize (Color 128 128 128 255)
+          bloomed = bloom 1 0.0 c
+          pixel = getPixel bloomed (filterSize `div` 2) (filterSize `div` 2)
+       in assertTrue "bloom bright" (colorR pixel >= 128)
+    ),
+    ( "bloom with threshold 1 minimal effect",
+      let c = newCanvas filterSize filterSize (Color 128 128 128 255)
+          bloomed = bloom 1 1.0 c
+          pixel = getPixel bloomed (filterSize `div` 2) (filterSize `div` 2)
+       in assertTrue "bloom high thresh" (abs (fromIntegral (colorR pixel) - 128 :: Int) < 10)
+    ),
+    ( "bloom radius 0 preserves canvas",
+      let c = newCanvas filterSize filterSize red
+       in assertEqual "bloom r0" c (bloom 0 0.5 c)
+    )
+  ]
+  where
+    filterSize :: Int
+    filterSize = 16
+
+-- ---------------------------------------------------------------------------
+-- Isometric tests
+-- ---------------------------------------------------------------------------
+
+testIsometric :: [(String, TestResult)]
+testIsometric =
+  [ ( "defaultIsoConfig has standard 2:1 dimensions",
+      assertTrue "iso default" (isoTileWidth defaultIsoConfig == 64 && isoTileHeight defaultIsoConfig == 32)
+    ),
+    ( "IsoConfig Show works",
+      assertTrue "iso show" (not (null (show defaultIsoConfig)))
+    ),
+    ( "IsoConfig Eq works",
+      assertTrue "iso eq" (defaultIsoConfig == defaultIsoConfig)
+    ),
+    ( "worldToScreen origin is (0, 0)",
+      assertEqual "w2s origin" (0, 0) (worldToScreen defaultIsoConfig 0 0)
+    ),
+    ( "worldToScreen (1, 0) shifts right and down",
+      let (sx, sy) = worldToScreen defaultIsoConfig 1 0
+       in assertTrue "w2s 1,0" (sx > 0 && sy > 0)
+    ),
+    ( "worldToScreen (0, 1) shifts left and down",
+      let (sx, sy) = worldToScreen defaultIsoConfig 0 1
+       in assertTrue "w2s 0,1" (sx < 0 && sy > 0)
+    ),
+    ( "worldToScreen (1, 1) y doubles (0, 0) to (1, 0) y",
+      let (_, sy10) = worldToScreen defaultIsoConfig 1 0
+          (_, sy11) = worldToScreen defaultIsoConfig 1 1
+       in assertTrue "w2s sum" (sy11 > sy10)
+    ),
+    ( "screenToWorld roundtrip at origin",
+      assertEqual "s2w origin" (0, 0) (screenToWorld defaultIsoConfig 0 0)
+    ),
+    ( "screenToWorld roundtrip at (1, 0)",
+      let (sx, sy) = worldToScreen defaultIsoConfig 1 0
+          (wx, wy) = screenToWorld defaultIsoConfig sx sy
+       in assertEqual "s2w roundtrip" (1, 0) (wx, wy)
+    ),
+    ( "screenToWorld roundtrip at (2, 3)",
+      let (sx, sy) = worldToScreen defaultIsoConfig 2 3
+          (wx, wy) = screenToWorld defaultIsoConfig sx sy
+       in assertEqual "s2w roundtrip 2,3" (2, 3) (wx, wy)
+    ),
+    ( "pointInDiamond center is inside",
+      assertTrue "diamond center" (pointInDiamond defaultIsoConfig 32 16 0 0)
+    ),
+    ( "pointInDiamond far outside is outside",
+      assertTrue "diamond far" (not (pointInDiamond defaultIsoConfig 200 200 0 0))
+    ),
+    ( "pointInDiamond top tip is inside",
+      assertTrue "diamond top" (pointInDiamond defaultIsoConfig 32 0 0 0)
+    ),
+    ( "pointInDiamond corner of bounding box is outside",
+      assertTrue "diamond corner" (not (pointInDiamond defaultIsoConfig 0 0 0 0))
+    ),
+    ( "isoDepthCompare same position is EQ",
+      assertEqual "depth eq" EQ (isoDepthCompare (0, 0) (0, 0))
+    ),
+    ( "isoDepthCompare larger sum is GT",
+      assertEqual "depth gt" GT (isoDepthCompare (1, 1) (0, 0))
+    ),
+    ( "isoDepthCompare smaller sum is LT",
+      assertEqual "depth lt" LT (isoDepthCompare (0, 0) (1, 1))
+    ),
+    ( "isoDepthCompare same sum larger wy is GT",
+      assertEqual "depth wy" GT (isoDepthCompare (0, 2) (1, 1))
+    ),
+    ( "drawDiamond preserves dimensions",
+      let c = drawDiamond (newCanvas isoCanvasSize isoCanvasSize transparent) defaultIsoConfig 0 0 red
+       in assertEqual "diamond draw dims" (isoCanvasSize, isoCanvasSize) (cWidth c, cHeight c)
+    ),
+    ( "drawDiamond draws pixels at top tip",
+      let c = drawDiamond (newCanvas isoCanvasSize isoCanvasSize transparent) defaultIsoConfig 0 0 red
+          topX = isoTileWidth defaultIsoConfig `div` 2
+       in assertEqual "diamond top pixel" red (getPixel c topX 0)
+    ),
+    ( "fillDiamond fills center",
+      let c = fillDiamond (newCanvas isoCanvasSize isoCanvasSize transparent) defaultIsoConfig 0 0 red
+          cx = isoTileWidth defaultIsoConfig `div` 2
+          cy = isoTileHeight defaultIsoConfig `div` 2
+       in assertEqual "diamond fill center" red (getPixel c cx cy)
+    ),
+    ( "fillDiamond preserves dimensions",
+      let c = fillDiamond (newCanvas isoCanvasSize isoCanvasSize transparent) defaultIsoConfig 0 0 red
+       in assertEqual "diamond fill dims" (isoCanvasSize, isoCanvasSize) (cWidth c, cHeight c)
+    ),
+    ( "renderIsoMap empty grid gives 1x1",
+      let result = renderIsoMap defaultIsoConfig [] []
+       in assertEqual "iso empty" (1, 1) (cWidth result, cHeight result)
+    ),
+    ( "renderIsoMap 1x1 grid has positive dimensions",
+      let tile = newCanvas 64 32 red
+          result = renderIsoMap defaultIsoConfig [(0, tile)] [[0]]
+       in assertTrue "iso 1x1" (cWidth result > 0 && cHeight result > 0)
+    ),
+    ( "renderIsoMap missing tile index is skipped",
+      let tile = newCanvas 64 32 red
+          result = renderIsoMap defaultIsoConfig [(0, tile)] [[99]]
+       in assertTrue "iso missing tile" (cWidth result > 0)
+    ),
+    ( "renderIsoMap 2x2 grid positive dimensions",
+      let tile = newCanvas 64 32 red
+          result = renderIsoMap defaultIsoConfig [(0, tile)] [[0, 0], [0, 0]]
+       in assertTrue "iso 2x2" (cWidth result > 64 && cHeight result > 32)
+    )
+  ]
+  where
+    isoCanvasSize :: Int
+    isoCanvasSize = 128
+
+-- ---------------------------------------------------------------------------
+-- Import tests
+-- ---------------------------------------------------------------------------
+
+testImport :: IO [(String, TestResult)]
+testImport = do
+  let importCanvas = fillRect (newCanvas importSize importSize transparent) 0 0 importSize importSize importTestColor
+  -- BMP round-trip
+  (bmpPath, bmpHandle) <- openTempFile "." "gb-import-test.bmp"
+  hClose bmpHandle
+  writeBmp bmpPath importCanvas
+  bmpBytes <- BS.readFile bmpPath
+  removeFile bmpPath
+  let bmpResult = decodeBmp bmpBytes
+  -- PNG round-trip
+  (pngPath, pngHandle) <- openTempFile "." "gb-import-test.png"
+  hClose pngHandle
+  writePng pngPath importCanvas
+  pngLazyBytes <- BL.readFile pngPath
+  removeFile pngPath
+  let pngResult = decodePng pngLazyBytes
+  return
+    [ ( "decodeBmp roundtrip succeeds",
+        case bmpResult of
+          Right _ -> Right ()
+          Left err -> Left ("decodeBmp failed: " ++ err)
+      ),
+      ( "decodeBmp roundtrip width correct",
+        case bmpResult of
+          Right c -> assertEqual "bmp import width" importSize (cWidth c)
+          Left err -> Left err
+      ),
+      ( "decodeBmp roundtrip height correct",
+        case bmpResult of
+          Right c -> assertEqual "bmp import height" importSize (cHeight c)
+          Left err -> Left err
+      ),
+      ( "decodeBmp roundtrip pixel color correct",
+        case bmpResult of
+          Right c ->
+            let pixel = getPixel c 0 0
+             in assertTrue
+                  "bmp import pixel"
+                  ( colorR pixel == colorR importTestColor
+                      && colorG pixel == colorG importTestColor
+                      && colorB pixel == colorB importTestColor
+                  )
+          Left err -> Left err
+      ),
+      ( "decodeBmp roundtrip pixel alpha correct",
+        case bmpResult of
+          Right c -> assertEqual "bmp import alpha" (colorA importTestColor) (colorA (getPixel c 0 0))
+          Left err -> Left err
+      ),
+      ( "decodeBmp invalid data returns Left",
+        case decodeBmp (BS.pack [0, 0, 0]) of
+          Left _ -> Right ()
+          Right _ -> Left "expected decodeBmp to fail on garbage"
+      ),
+      ( "decodeBmp empty returns Left",
+        case decodeBmp BS.empty of
+          Left _ -> Right ()
+          Right _ -> Left "expected decodeBmp to fail on empty"
+      ),
+      ( "decodePng roundtrip succeeds",
+        case pngResult of
+          Right _ -> Right ()
+          Left err -> Left ("decodePng failed: " ++ err)
+      ),
+      ( "decodePng roundtrip width correct",
+        case pngResult of
+          Right c -> assertEqual "png import width" importSize (cWidth c)
+          Left err -> Left err
+      ),
+      ( "decodePng roundtrip height correct",
+        case pngResult of
+          Right c -> assertEqual "png import height" importSize (cHeight c)
+          Left err -> Left err
+      ),
+      ( "decodePng roundtrip pixel color correct",
+        case pngResult of
+          Right c ->
+            let pixel = getPixel c 0 0
+             in assertTrue
+                  "png import pixel"
+                  ( colorR pixel == colorR importTestColor
+                      && colorG pixel == colorG importTestColor
+                      && colorB pixel == colorB importTestColor
+                  )
+          Left err -> Left err
+      ),
+      ( "decodePng roundtrip pixel alpha correct",
+        case pngResult of
+          Right c -> assertEqual "png import alpha" (colorA importTestColor) (colorA (getPixel c 0 0))
+          Left err -> Left err
+      ),
+      ( "decodePng invalid data returns Left",
+        case decodePng (BL.pack [0, 0, 0]) of
+          Left _ -> Right ()
+          Right _ -> Left "expected decodePng to fail on garbage"
+      ),
+      ( "decodePng empty returns Left",
+        case decodePng BL.empty of
+          Left _ -> Right ()
+          Right _ -> Left "expected decodePng to fail on empty"
+      ),
+      ( "decodeBmp roundtrip center pixel correct",
+        case bmpResult of
+          Right c ->
+            let centerIdx = importSize `div` 2
+                pixel = getPixel c centerIdx centerIdx
+             in assertTrue "bmp center pixel" (colorR pixel == colorR importTestColor)
+          Left err -> Left err
+      ),
+      ( "decodePng roundtrip center pixel correct",
+        case pngResult of
+          Right c ->
+            let centerIdx = importSize `div` 2
+                pixel = getPixel c centerIdx centerIdx
+             in assertTrue "png center pixel" (colorR pixel == colorR importTestColor)
+          Left err -> Left err
+      )
+    ]
+  where
+    importSize :: Int
+    importSize = 8
+    importTestColor :: Color
+    importTestColor = Color 200 100 50 255
 
 -- ---------------------------------------------------------------------------
 -- Helpers

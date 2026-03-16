@@ -17,8 +17,16 @@ module GBSprite.Animation
     -- * Playback
     animationFrame,
     animationDone,
+
+    -- * Blending
+    blendFrames,
   )
 where
+
+import qualified Data.ByteString as BS
+import Data.Word (Word8)
+import GBSprite.Canvas (Canvas (..), generatePixelData)
+import GBSprite.Color (Color (..), lerp)
 
 -- | How an animation repeats.
 data LoopMode
@@ -77,3 +85,55 @@ animationDone :: Animation -> Int -> Bool
 animationDone (Animation delay count Once) tick =
   delay > 0 && count > 0 && tick `div` delay >= count - 1
 animationDone _ _ = False
+
+-- ---------------------------------------------------------------------------
+-- Blending
+-- ---------------------------------------------------------------------------
+
+-- | Cross-fade between two canvases at position @t@ in @[0, 1]@.
+--
+-- @blendFrames t a b@ blends from @a@ (at @t=0@) to @b@ (at @t=1@).
+-- Both canvases must have the same dimensions; if they differ, the
+-- output uses the dimensions of @a@.
+blendFrames :: Double -> Canvas -> Canvas -> Canvas
+blendFrames t canvasA canvasB =
+  let w = cWidth canvasA
+      h = cHeight canvasA
+      srcA = cPixels canvasA
+      srcB = cPixels canvasB
+      wB = cWidth canvasB
+      hB = cHeight canvasB
+      pixels = generatePixelData (w * h * blendBytesPerPixel) $ \i ->
+        let pixIdx = i `div` blendBytesPerPixel
+            channel = i `mod` blendBytesPerPixel
+            x = pixIdx `mod` w
+            y = pixIdx `div` w
+            idxA = pixIdx * blendBytesPerPixel
+            pixA =
+              Color
+                (BS.index srcA idxA)
+                (BS.index srcA (idxA + 1))
+                (BS.index srcA (idxA + 2))
+                (BS.index srcA (idxA + 3))
+            pixB =
+              if x < wB && y < hB
+                then
+                  let idxB = (y * wB + x) * blendBytesPerPixel
+                   in Color
+                        (BS.index srcB idxB)
+                        (BS.index srcB (idxB + 1))
+                        (BS.index srcB (idxB + 2))
+                        (BS.index srcB (idxB + 3))
+                else Color 0 0 0 0
+            Color nr ng nb na = lerp t pixA pixB
+         in blendChannelAt channel nr ng nb na
+   in Canvas w h pixels
+
+blendBytesPerPixel :: Int
+blendBytesPerPixel = 4
+
+blendChannelAt :: Int -> Word8 -> Word8 -> Word8 -> Word8 -> Word8
+blendChannelAt 0 r _ _ _ = r
+blendChannelAt 1 _ g _ _ = g
+blendChannelAt 2 _ _ b _ = b
+blendChannelAt _ _ _ _ a = a

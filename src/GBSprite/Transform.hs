@@ -11,9 +11,16 @@ module GBSprite.Transform
     rotate90,
     rotate180,
     rotate270,
+    rotateArbitrary,
 
     -- * Scale
     scaleNearest,
+    scaleBilinear,
+    scaleTo,
+
+    -- * Shear
+    shearH,
+    shearV,
 
     -- * Effects
     outline,
@@ -25,7 +32,7 @@ import qualified Data.ByteString as BS
 import Data.ByteString.Unsafe (unsafeIndex)
 import Data.Word (Word8)
 import GBSprite.Canvas (Canvas (..), generatePixelData, getPixel)
-import GBSprite.Color (Color (..), alphaBlend, transparent)
+import GBSprite.Color (Color (..), alphaBlend, lerp, transparent)
 
 -- | Flip horizontally (mirror left-right).
 flipH :: Canvas -> Canvas
@@ -175,9 +182,124 @@ dropShadow dx dy shadowColor canvas =
                   else 0
    in Canvas padW padH pixels
 
+-- | Rotate by an arbitrary angle (degrees, clockwise) with bilinear
+-- interpolation. The output canvas is sized to contain the full
+-- rotated image.
+rotateArbitrary :: Double -> Canvas -> Canvas
+rotateArbitrary angleDeg canvas
+  | angleDeg == 0 = canvas
+  | otherwise =
+      let w = cWidth canvas
+          h = cHeight canvas
+          radians = angleDeg * degToRad
+          cosA = cos radians
+          sinA = sin radians
+          absCos = abs cosA
+          absSin = abs sinA
+          newW = ceiling (fromIntegral w * absCos + fromIntegral h * absSin :: Double)
+          newH = ceiling (fromIntegral w * absSin + fromIntegral h * absCos :: Double)
+          centerSrcX = fromIntegral w / 2.0 :: Double
+          centerSrcY = fromIntegral h / 2.0 :: Double
+          centerDstX = fromIntegral newW / 2.0 :: Double
+          centerDstY = fromIntegral newH / 2.0 :: Double
+       in Canvas newW newH $ generatePixels newW newH $ \ox oy ->
+            let dx = fromIntegral ox - centerDstX + 0.5
+                dy = fromIntegral oy - centerDstY + 0.5
+                srcX = dx * cosA + dy * sinA + centerSrcX - 0.5
+                srcY = negate dx * sinA + dy * cosA + centerSrcY - 0.5
+                Color sr sg sb sa = bilinearSample canvas srcX srcY
+             in \ch -> colorChannel ch sr sg sb sa
+
+-- | Scale using bilinear interpolation. Works for both up and down
+-- scaling. Factor must be positive (values <= 0 are treated as 1).
+scaleBilinear :: Double -> Canvas -> Canvas
+scaleBilinear factor canvas
+  | factor <= 0.0 = canvas
+  | abs (factor - 1.0) < scaleEpsilon = canvas
+  | otherwise =
+      let w = cWidth canvas
+          h = cHeight canvas
+          newW = max 1 (round (fromIntegral w * factor))
+          newH = max 1 (round (fromIntegral h * factor))
+       in scaleToImpl newW newH canvas
+
+-- | Scale to exact target dimensions using bilinear interpolation.
+-- Dimensions must be positive (values <= 0 are treated as 1).
+scaleTo :: Int -> Int -> Canvas -> Canvas
+scaleTo targetW targetH =
+  scaleToImpl (max 1 targetW) (max 1 targetH)
+
+-- | Shear horizontally. Each row is shifted by @factor * (y - height\/2)@
+-- pixels. Positive values shift bottom rows right.
+shearH :: Double -> Canvas -> Canvas
+shearH factor canvas
+  | abs factor < scaleEpsilon = canvas
+  | otherwise =
+      let w = cWidth canvas
+          h = cHeight canvas
+          maxShift = abs factor * fromIntegral h / 2.0
+          newW = w + ceiling (2.0 * maxShift)
+          offsetX = ceiling maxShift :: Int
+       in Canvas newW h $ generatePixels newW h $ \ox oy ->
+            let shift = factor * (fromIntegral oy - fromIntegral h / 2.0)
+                srcX = fromIntegral ox - fromIntegral offsetX + shift
+                srcY = fromIntegral oy
+                Color sr sg sb sa = bilinearSample canvas srcX srcY
+             in \ch -> colorChannel ch sr sg sb sa
+
+-- | Shear vertically. Each column is shifted by @factor * (x - width\/2)@
+-- pixels. Positive values shift right columns down.
+shearV :: Double -> Canvas -> Canvas
+shearV factor canvas
+  | abs factor < scaleEpsilon = canvas
+  | otherwise =
+      let w = cWidth canvas
+          h = cHeight canvas
+          maxShift = abs factor * fromIntegral w / 2.0
+          newH = h + ceiling (2.0 * maxShift)
+          offsetY = ceiling maxShift :: Int
+       in Canvas w newH $ generatePixels w newH $ \ox oy ->
+            let shift = factor * (fromIntegral ox - fromIntegral w / 2.0)
+                srcX = fromIntegral ox
+                srcY = fromIntegral oy - fromIntegral offsetY + shift
+                Color sr sg sb sa = bilinearSample canvas srcX srcY
+             in \ch -> colorChannel ch sr sg sb sa
+
 -- ---------------------------------------------------------------------------
 -- Internal helpers
 -- ---------------------------------------------------------------------------
+
+scaleEpsilon :: Double
+scaleEpsilon = 1.0e-10
+
+degToRad :: Double
+degToRad = pi / 180.0
+
+scaleToImpl :: Int -> Int -> Canvas -> Canvas
+scaleToImpl newW newH canvas =
+  let w = cWidth canvas
+      h = cHeight canvas
+      ratioX = fromIntegral w / fromIntegral newW :: Double
+      ratioY = fromIntegral h / fromIntegral newH :: Double
+   in Canvas newW newH $ generatePixels newW newH $ \ox oy ->
+        let srcX = (fromIntegral ox + 0.5) * ratioX - 0.5
+            srcY = (fromIntegral oy + 0.5) * ratioY - 0.5
+            Color sr sg sb sa = bilinearSample canvas srcX srcY
+         in \ch -> colorChannel ch sr sg sb sa
+
+bilinearSample :: Canvas -> Double -> Double -> Color
+bilinearSample canvas fx fy =
+  let ix = floor fx :: Int
+      iy = floor fy :: Int
+      fracX = fx - fromIntegral ix
+      fracY = fy - fromIntegral iy
+      c00 = getPixel canvas ix iy
+      c10 = getPixel canvas (ix + 1) iy
+      c01 = getPixel canvas ix (iy + 1)
+      c11 = getPixel canvas (ix + 1) (iy + 1)
+      top = lerp fracX c00 c10
+      bot = lerp fracX c01 c11
+   in lerp fracY top bot
 
 -- | Number of bytes per pixel (RGBA).
 bytesPerPixel :: Int

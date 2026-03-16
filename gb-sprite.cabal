@@ -27,6 +27,7 @@ source-repository head
 
 library
   exposed-modules:
+    GBSprite.Adjust
     GBSprite.Animation
     GBSprite.BMP
     GBSprite.Canvas
@@ -35,7 +36,10 @@ library
     GBSprite.Dither
     GBSprite.Draw
     GBSprite.Export
+    GBSprite.Filter
     GBSprite.Gradient
+    GBSprite.Import
+    GBSprite.Isometric
     GBSprite.NineSlice
     GBSprite.Noise
     GBSprite.Palette
