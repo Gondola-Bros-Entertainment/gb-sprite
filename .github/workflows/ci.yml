@@ -20,7 +20,7 @@ jobs:
     name: HLint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: haskell-actions/hlint-setup@v2
         with:
           version: '3.8'
@@ -33,8 +33,8 @@ jobs:
     name: Ormolu
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: haskell-actions/run-ormolu@v16
+      - uses: actions/checkout@v6
+      - uses: haskell-actions/run-ormolu@v17
         with:
           pattern: |
             src/**/*.hs
@@ -59,7 +59,7 @@ jobs:
             name: Windows
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - uses: haskell-actions/setup@v2
         with:
@@ -67,7 +67,7 @@ jobs:
           cabal-version: 'latest'
 
       - name: Cache Cabal store
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.cabal/store
           key: cabal-${{ runner.os }}-${{ hashFiles('gb-sprite.cabal') }}
@@ -91,7 +91,7 @@ jobs:
     needs: [lint, format]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: haskell-actions/setup@v2
         with:
           ghc-version: '9.8'
