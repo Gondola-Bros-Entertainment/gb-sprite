@@ -3129,9 +3129,9 @@ testImport = do
   (pngPath, pngHandle) <- openTempFile "." "gb-import-test.png"
   hClose pngHandle
   writePng pngPath importCanvas
-  pngLazyBytes <- BL.readFile pngPath
+  pngStrictBytes <- BS.readFile pngPath
   removeFile pngPath
-  let pngResult = decodePng pngLazyBytes
+  let pngResult = decodePng (BL.fromStrict pngStrictBytes)
   return
     [ ( "decodeBmp roundtrip succeeds",
         case bmpResult of
