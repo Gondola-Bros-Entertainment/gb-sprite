@@ -233,8 +233,8 @@ drawCatmullRom canvas points color = case points of
   [] -> canvas
   [_] -> canvas
   [(ax, ay), (bx, by)] -> drawLine canvas ax ay bx by color
-  [(ax, ay), (bx, by), (cx_, cy_)] ->
-    drawLine (drawLine canvas ax ay bx by color) bx by cx_ cy_ color
+  [(ax, ay), (bx, by), (cx, cy)] ->
+    drawLine (drawLine canvas ax ay bx by color) bx by cx cy color
   _ ->
     let segments = catmullRomSegments points
         allPoints = concatMap (catmullRomEvaluate catmullRomSteps) segments

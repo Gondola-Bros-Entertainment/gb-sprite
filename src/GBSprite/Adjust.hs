@@ -4,7 +4,7 @@
 -- across every pixel of a canvas. Built on 'mapPixels' and the
 -- color-level transforms from "GBSprite.Color".
 --
--- The 'ColorLUT' type provides precomputed 3D lookup tables for
+-- The t'ColorLUT' type provides precomputed 3D lookup tables for
 -- fast color grading with trilinear interpolation.
 module GBSprite.Adjust
   ( -- * Grayscale and inversion

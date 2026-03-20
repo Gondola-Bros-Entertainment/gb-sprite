@@ -160,11 +160,17 @@ fillRect   :: Canvas -> Int -> Int -> Int -> Int -> Color -> Canvas
 drawCircle :: Canvas -> Int -> Int -> Int -> Color -> Canvas
 fillCircle :: Canvas -> Int -> Int -> Int -> Color -> Canvas
 floodFill  :: Canvas -> Int -> Int -> Color -> Canvas
+hLine      :: Canvas -> Int -> Int -> Int -> Color -> Canvas  -- horizontal line
 crop            :: Int -> Int -> Int -> Int -> Canvas -> Canvas
 trimTransparent :: Canvas -> Canvas
 canvasOpacity   :: Double -> Canvas -> Canvas
+clearCanvas     :: Canvas -> Color -> Canvas                  -- fill with solid color
 mapPixels       :: (Color -> Color) -> Canvas -> Canvas
 pixelFold       :: (a -> Int -> Int -> Color -> a) -> a -> Canvas -> a
+
+-- Utilities
+inBounds   :: Canvas -> Int -> Int -> Bool
+pixelIndex :: Int -> Int -> Int -> Int                        -- byte offset at (x, y)
 
 -- Bulk operations (efficient batch drawing)
 generateCanvasPixels :: Int -> Int -> (Int -> Int -> Color) -> Canvas
@@ -314,6 +320,7 @@ nes                  :: Palette
 
 -- Operations
 fromColors     :: [Color] -> Palette
+paletteSize    :: Palette -> Int
 paletteColor   :: Palette -> Int -> Color
 paletteSwap    :: Palette -> Palette -> Color -> Color
 paletteLerp    :: Double -> Palette -> Palette -> Palette
@@ -324,6 +331,9 @@ quantizeColor  :: Palette -> Color -> Color
 ### Sprite
 
 ```haskell
+data BoundingBox = BoundingBox
+  { bbX :: !Int, bbY :: !Int, bbWidth :: !Int, bbHeight :: !Int }
+
 data Sprite = Sprite
   { spriteName :: !String, spriteOriginX :: !Int, spriteOriginY :: !Int
   , spriteFrames :: ![Canvas], spriteBounds :: !(Maybe BoundingBox) }
