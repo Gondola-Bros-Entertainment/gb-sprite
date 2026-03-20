@@ -21,8 +21,9 @@ module GBSprite.VFX
   )
 where
 
+import Data.Bits ((.&.))
 import Data.List (foldl')
-import GBSprite.Canvas (Canvas (..), fillCircle, newCanvas, setPixel)
+import GBSprite.Canvas (Canvas (..), bulkSetPixels, fillCircle, newCanvas)
 import GBSprite.Color (Color (..), scaleAlpha, transparent)
 
 -- | Configuration for explosion effects.
@@ -182,43 +183,28 @@ renderRingFrame config frameIdx =
 
 drawRing :: Canvas -> Int -> Int -> Int -> Int -> Color -> Canvas
 drawRing canvas cx cy radius thickness color =
-  foldl' (\c r -> drawCircleOutline c cx cy r color) canvas [max 0 (radius - thickness `div` 2) .. radius + thickness `div` 2]
+  let radii = [max 0 (radius - thickness `div` 2) .. radius + thickness `div` 2]
+      allPixels = concatMap (circleOutlinePixels cx cy color) radii
+   in bulkSetPixels canvas allPixels
 
-drawCircleOutline :: Canvas -> Int -> Int -> Int -> Color -> Canvas
-drawCircleOutline canvas cx cy radius color
-  | radius <= 0 = canvas
-  | otherwise = go canvas 0 radius (1 - radius)
+circleOutlinePixels :: Int -> Int -> Color -> Int -> [(Int, Int, Color)]
+circleOutlinePixels _ _ _ r | r <= 0 = []
+circleOutlinePixels cx cy color radius = go 0 radius (1 - radius)
   where
-    go c x y d
-      | x > y = c
+    go x y d
+      | x > y = []
       | otherwise =
-          let drawn = plotOctants c cx cy x y color
-              nextD = if d < 0 then d + 2 * x + 3 else d + 2 * (x - y) + 5
+          let nextD = if d < 0 then d + 2 * x + 3 else d + 2 * (x - y) + 5
               nextY = if d < 0 then y else y - 1
-           in go drawn (x + 1) nextY nextD
-
-    plotOctants c cx_ cy_ x y col =
-      foldl'
-        (\acc (px, py) -> safeSetPixel acc px py col)
-        c
-        [ (cx_ + x, cy_ + y),
-          (cx_ - x, cy_ + y),
-          (cx_ + x, cy_ - y),
-          (cx_ - x, cy_ - y),
-          (cx_ + y, cy_ + x),
-          (cx_ - y, cy_ + x),
-          (cx_ + y, cy_ - x),
-          (cx_ - y, cy_ - x)
-        ]
-
-safeSetPixel :: Canvas -> Int -> Int -> Color -> Canvas
-safeSetPixel canvas x y color
-  | x >= 0 && x < canvasW && y >= 0 && y < canvasH =
-      setPixel canvas x y color
-  | otherwise = canvas
-  where
-    canvasW = cWidth canvas
-    canvasH = cHeight canvas
+           in (cx + x, cy + y, color)
+                : (cx - x, cy + y, color)
+                : (cx + x, cy - y, color)
+                : (cx - x, cy - y, color)
+                : (cx + y, cy + x, color)
+                : (cx - y, cy + x, color)
+                : (cx + y, cy - x, color)
+                : (cx - y, cy - x, color)
+                : go (x + 1) nextY nextD
 
 renderGlowFrame :: GlowConfig -> Int -> Canvas
 renderGlowFrame config frameIdx =
@@ -291,8 +277,8 @@ lcgStep = 7
 -- | Deterministic fractional value in [0, 1) from a seed.
 lcgFrac :: Int -> Double
 lcgFrac seed =
-  let hashed = (seed * lcgMul + lcgInc) `mod` lcgMod
-   in fromIntegral (abs hashed) / fromIntegral lcgMod
+  let hashed = (seed * lcgMul + lcgInc) .&. lcgMask
+   in fromIntegral hashed / fromIntegral lcgMod
   where
     lcgMul :: Int
     lcgMul = 1103515245
@@ -302,3 +288,6 @@ lcgFrac seed =
 
     lcgMod :: Int
     lcgMod = 2147483648
+
+    lcgMask :: Int
+    lcgMask = 2147483647

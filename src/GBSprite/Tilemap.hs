@@ -12,7 +12,7 @@ module GBSprite.Tilemap
 where
 
 import Data.List (foldl')
-import GBSprite.Canvas (Canvas (..), getPixel, newCanvas, setPixel)
+import GBSprite.Canvas (Canvas (..), bulkSetPixels, getPixel, newCanvas)
 import GBSprite.Color (Color (colorA), transparent)
 import GBSprite.Sheet (SheetEntry (..), SpriteSheet (..))
 
@@ -55,22 +55,11 @@ renderTilemap sheet config =
           [] -> canvas
 
     stampTile canvas atlas entry destX destY tw th =
-      foldlCoords
-        canvas
-        tw
-        th
-        ( \c tx ty ->
-            let pixel = getPixel atlas (entryX entry + tx) (entryY entry + ty)
-             in if colorA pixel > 0
-                  then setPixel c (destX + tx) (destY + ty) pixel
-                  else c
-        )
-
--- | Fold over tile coordinates.
-foldlCoords :: Canvas -> Int -> Int -> (Canvas -> Int -> Int -> Canvas) -> Canvas
-foldlCoords canvas w h f = go canvas 0 0
-  where
-    go c x y
-      | y >= h = c
-      | x >= w = go c 0 (y + 1)
-      | otherwise = go (f c x y) (x + 1) y
+      let pixels =
+            [ (destX + tx, destY + ty, pixel)
+            | ty <- [0 .. th - 1],
+              tx <- [0 .. tw - 1],
+              let pixel = getPixel atlas (entryX entry + tx) (entryY entry + ty),
+              colorA pixel > 0
+            ]
+       in bulkSetPixels canvas pixels

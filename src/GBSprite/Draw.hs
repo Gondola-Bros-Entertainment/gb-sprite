@@ -34,7 +34,17 @@ where
 
 import Data.List (foldl')
 import Data.Word (Word8)
-import GBSprite.Canvas (Canvas (..), drawLine, fillCircle, fillRect, getPixel, hLine, setPixel)
+import GBSprite.Canvas
+  ( Canvas (..),
+    bulkBlendPixels,
+    bulkHSpans,
+    bulkSetPixels,
+    drawLine,
+    fillCircle,
+    fillRect,
+    getPixel,
+    setPixel,
+  )
 import GBSprite.Color (Color (..), alphaBlend, withAlpha)
 
 -- | Draw a thick line by drawing filled circles at each Bresenham point.
@@ -51,7 +61,13 @@ drawPolygon canvas vertices color = case vertices of
   [_] -> canvas
   (v : vs) ->
     let edges = zip vertices (vs ++ [v])
-     in foldl' (\c ((ax, ay), (bx, by)) -> drawLine c ax ay bx by color) canvas edges
+        allPixels =
+          concatMap
+            ( \((ax, ay), (bx, by)) ->
+                map (\(px, py) -> (px, py, color)) (bresenhamPoints ax ay bx by)
+            )
+            edges
+     in bulkSetPixels canvas allPixels
 
 -- | Fill a polygon using scanline rasterization.
 fillPolygon :: Canvas -> [(Int, Int)] -> Color -> Canvas
@@ -63,16 +79,17 @@ fillPolygon canvas vertices color = case vertices of
         minY = max 0 (foldl1' min ys)
         maxY = min (cHeight canvas - 1) (foldl1' max ys)
         edges = zip vertices (vs ++ [v])
-     in foldl' (fillScanline edges) canvas [minY .. maxY]
+        allSpans = concatMap (computeScanlineSpans edges) [minY .. maxY]
+     in bulkHSpans canvas color allSpans
   where
     foldl1' f (z : zs) = foldl' f z zs
     foldl1' _ [] = 0
 
-    fillScanline edges c scanY =
+    computeScanlineSpans edges scanY =
       let intersections = concatMap (edgeIntersection scanY) edges
           sorted = insertionSort intersections
           pairs = takePairs sorted
-       in foldl' (\acc (startX, endX) -> hLine acc startX endX scanY color) c pairs
+       in map (\(startX, endX) -> (startX, endX, scanY)) pairs
 
     edgeIntersection :: Int -> ((Int, Int), (Int, Int)) -> [Int]
     edgeIntersection scanY ((ax, ay), (bx, by))
@@ -98,21 +115,21 @@ fillPolygon canvas vertices color = case vertices of
 drawEllipse :: Canvas -> Int -> Int -> Int -> Int -> Color -> Canvas
 drawEllipse canvas cx cy rx ry color
   | rx <= 0 || ry <= 0 = setPixel canvas cx cy color
-  | otherwise =
-      let (afterR1, endX, endY) = ellipseRegion1 canvas cx cy rx ry color 0 ry initD1
-          d2 = rySq * (endX * endX + endX) + rxSq * (endY - 1) * (endY - 1) - rxSq * rySq + rySq `div` 4
-       in ellipseRegion2 afterR1 cx cy rx ry color endX endY d2
+  | otherwise = bulkSetPixels canvas allPixels
   where
     rxSq = rx * rx
     rySq = ry * ry
     initD1 = rySq - rxSq * ry + rxSq `div` 4
+    (r1Pixels, endX, endY) = collectRegion1 rySq rxSq cx cy 0 ry initD1 color
+    d2 = rySq * (endX * endX + endX) + rxSq * (endY - 1) * (endY - 1) - rxSq * rySq + rySq `div` 4
+    r2Pixels = collectRegion2 rxSq rySq cx cy endX endY d2 color
+    allPixels = r1Pixels ++ r2Pixels
 
 -- | Fill an ellipse.
 fillEllipse :: Canvas -> Int -> Int -> Int -> Int -> Color -> Canvas
 fillEllipse canvas cx cy rx ry color
   | rx <= 0 || ry <= 0 = setPixel canvas cx cy color
-  | otherwise =
-      foldl' (\c dy -> hLine c (cx - xWidth dy) (cx + xWidth dy) (cy + dy) color) canvas [negate ry .. ry]
+  | otherwise = bulkHSpans canvas color spans
   where
     rxF = fromIntegral rx :: Double
     ryF = fromIntegral ry :: Double
@@ -122,6 +139,8 @@ fillEllipse canvas cx cy rx ry color
     xWidth dy =
       let dyF = fromIntegral dy :: Double
        in round (rxF * sqrt (max 0.0 (1.0 - dyF * dyF / rySq)))
+
+    spans = [(cx - xWidth dy, cx + xWidth dy, cy + dy) | dy <- [negate ry .. ry]]
 
 -- | Draw an arc (portion of an ellipse) between angles in degrees.
 drawArc :: Canvas -> Int -> Int -> Int -> Int -> Double -> Double -> Color -> Canvas
@@ -139,7 +158,13 @@ drawArc canvas cx cy rx ry startDeg endDeg color =
       edges = case points of
         [] -> []
         (_ : ps) -> zip points ps
-   in foldl' (\c ((ax, ay), (bx, by)) -> drawLine c ax ay bx by color) canvas edges
+      allPixels =
+        concatMap
+          ( \((ax, ay), (bx, by)) ->
+              map (\(px, py) -> (px, py, color)) (bresenhamPoints ax ay bx by)
+          )
+          edges
+   in bulkSetPixels canvas allPixels
   where
     degToRad :: Double
     degToRad = pi / 180.0
@@ -164,7 +189,13 @@ drawBezier canvas (x0, y0) (ctrlX, ctrlY) (x1, y1) color =
       edges = case points of
         [] -> []
         (_ : ps) -> zip points ps
-   in foldl' (\c ((ax, ay), (bx, by)) -> drawLine c ax ay bx by color) canvas edges
+      allPixels =
+        concatMap
+          ( \((ax, ay), (bx, by)) ->
+              map (\(px, py) -> (px, py, color)) (bresenhamPoints ax ay bx by)
+          )
+          edges
+   in bulkSetPixels canvas allPixels
   where
     bezierSteps :: Int
     bezierSteps = 32
@@ -187,7 +218,13 @@ drawCubicBezier canvas (x0, y0) (cx1, cy1) (cx2, cy2) (x1, y1) color =
       edges = case points of
         [] -> []
         (_ : ps) -> zip points ps
-   in foldl' (\c ((ax, ay), (bx, by)) -> drawLine c ax ay bx by color) canvas edges
+      allPixels =
+        concatMap
+          ( \((ax, ay), (bx, by)) ->
+              map (\(px, py) -> (px, py, color)) (bresenhamPoints ax ay bx by)
+          )
+          edges
+   in bulkSetPixels canvas allPixels
 
 -- | Draw a Catmull-Rom spline through the given control points.
 -- Requires at least 4 points; with fewer, draws straight lines.
@@ -196,15 +233,21 @@ drawCatmullRom canvas points color = case points of
   [] -> canvas
   [_] -> canvas
   [(ax, ay), (bx, by)] -> drawLine canvas ax ay bx by color
-  [(ax, ay), (bx, by), (cx, cy)] ->
-    drawLine (drawLine canvas ax ay bx by color) bx by cx cy color
+  [(ax, ay), (bx, by), (cx_, cy_)] ->
+    drawLine (drawLine canvas ax ay bx by color) bx by cx_ cy_ color
   _ ->
     let segments = catmullRomSegments points
         allPoints = concatMap (catmullRomEvaluate catmullRomSteps) segments
         edges = case allPoints of
           [] -> []
           (_ : ps) -> zip allPoints ps
-     in foldl' (\c ((ax, ay), (bx, by)) -> drawLine c ax ay bx by color) canvas edges
+        allPixels =
+          concatMap
+            ( \((ax, ay), (bx, by)) ->
+                map (\(px, py) -> (px, py, color)) (bresenhamPoints ax ay bx by)
+            )
+            edges
+     in bulkSetPixels canvas allPixels
 
 -- | Draw an anti-aliased line using Wu's algorithm.
 drawAALine :: Canvas -> Int -> Int -> Int -> Int -> Color -> Canvas
@@ -221,7 +264,8 @@ drawAALine canvas x0 y0 x1 y1 color =
       dx = bx - ax
       dy = by - ay
       gradient = if dx == 0 then 1.0 else fromIntegral dy / fromIntegral dx :: Double
-   in wuLoop canvas steep color ax bx (fromIntegral ay) gradient
+      pixels = collectAAPixels canvas steep color ax bx (fromIntegral ay) gradient
+   in bulkBlendPixels canvas pixels
 
 -- | Fill a rectangular area with a repeating pattern from a source canvas.
 patternFill :: Canvas -> Int -> Int -> Int -> Int -> Canvas -> Canvas
@@ -230,22 +274,16 @@ patternFill canvas rx ry rw rh patCanvas
   | otherwise =
       let patW = max 1 (cWidth patCanvas)
           patH = max 1 (cHeight patCanvas)
-       in foldl'
-            ( \c row ->
-                foldl'
-                  ( \acc col ->
-                      let px = col `mod` patW
-                          py = row `mod` patH
-                          pixel = getPixel patCanvas px py
-                       in if colorA pixel > 0
-                            then setPixel acc (rx + col) (ry + row) pixel
-                            else acc
-                  )
-                  c
-                  [0 .. rw - 1]
-            )
-            canvas
-            [0 .. rh - 1]
+          pixels =
+            [ (rx + col, ry + row, pixel)
+            | row <- [0 .. rh - 1],
+              col <- [0 .. rw - 1],
+              let px = col `mod` patW
+                  py = row `mod` patH
+                  pixel = getPixel patCanvas px py,
+              colorA pixel > 0
+            ]
+       in bulkSetPixels canvas pixels
 
 -- | Draw a rounded rectangle outline.
 drawRoundRect :: Canvas -> Int -> Int -> Int -> Int -> Int -> Color -> Canvas
@@ -325,29 +363,30 @@ catmullRomEvaluate steps ((x0, y0), (x1, y1), (x2, y2), (x3, y3)) =
   | i <- [0 .. steps]
   ]
 
-wuLoop :: Canvas -> Bool -> Color -> Int -> Int -> Double -> Double -> Canvas
-wuLoop canvas steep color startX endX yInter gradient =
-  go canvas startX yInter
+-- | Collect anti-aliased line pixels (Wu's algorithm).
+collectAAPixels :: Canvas -> Bool -> Color -> Int -> Int -> Double -> Double -> [(Int, Int, Color)]
+collectAAPixels canvas steep lineColor startX endX yInter gradient =
+  go startX yInter
   where
-    go c x intery
-      | x > endX = c
+    go x intery
+      | x > endX = []
       | otherwise =
           let iy = floor intery :: Int
               frac = intery - fromIntegral iy
               invFrac = 1.0 - frac
-              c1 = plotAA c steep x iy color invFrac
-              c2 = plotAA c1 steep x (iy + 1) color frac
-           in go c2 (x + 1) (intery + gradient)
+              p1 = mkAAPixel canvas steep x iy lineColor invFrac
+              p2 = mkAAPixel canvas steep x (iy + 1) lineColor frac
+           in p1 ++ p2 ++ go (x + 1) (intery + gradient)
 
-plotAA :: Canvas -> Bool -> Int -> Int -> Color -> Double -> Canvas
-plotAA canvas steep x y color intensity
-  | intensity <= 0 = canvas
+mkAAPixel :: Canvas -> Bool -> Int -> Int -> Color -> Double -> [(Int, Int, Color)]
+mkAAPixel canvas steep x y lineColor intensity
+  | intensity <= 0 = []
   | otherwise =
       let (px, py) = if steep then (y, x) else (x, y)
           bg = getPixel canvas px py
-          fg = withAlpha (clampByte (round (fromIntegral (colorA color) * intensity))) color
+          fg = withAlpha (clampByte (round (fromIntegral (colorA lineColor) * intensity))) lineColor
           blended = alphaBlend fg bg
-       in setPixel canvas px py blended
+       in [(px, py, blended)]
 
 clampByte :: Int -> Word8
 clampByte n = fromIntegral (max 0 (min aaMaxChannel n))
@@ -374,53 +413,39 @@ bresenhamPoints x0 y0 x1 y1 =
                 if e2 <= dx then (nextErr1 + dx, cy + sy) else (nextErr1, cy)
            in (cx, cy) : go nextX nextY nextErr2 dx dy sx sy
 
--- | Ellipse region 1 (where dy/dx > -1). Returns (canvas, endX, endY).
-ellipseRegion1 :: Canvas -> Int -> Int -> Int -> Int -> Color -> Int -> Int -> Int -> (Canvas, Int, Int)
-ellipseRegion1 canvas cx cy rx ry color x y d
-  | rySq * (2 * x + 1) >= rxSq * (2 * y) = (plotEllipsePoints canvas cx cy x y color, x, y)
+-- | Collect ellipse region 1 outline pixels (where dy/dx > -1).
+collectRegion1 :: Int -> Int -> Int -> Int -> Int -> Int -> Int -> Color -> ([(Int, Int, Color)], Int, Int)
+collectRegion1 rySq rxSq cx cy x y d color
+  | rySq * (2 * x + 1) >= rxSq * (2 * y) =
+      (ellipseQuadPixels cx cy x y color, x, y)
   | otherwise =
-      let drawn = plotEllipsePoints canvas cx cy x y color
+      let pixels = ellipseQuadPixels cx cy x y color
           nextX = x + 1
           (nextD, nextY) =
             if d < 0
               then (d + rySq * (2 * nextX + 1), y)
               else (d + rySq * (2 * nextX + 1) - rxSq * (2 * y - 2), y - 1)
-       in ellipseRegion1 drawn cx cy rx ry color nextX nextY nextD
-  where
-    rxSq = rx * rx
-    rySq = ry * ry
+          (restPixels, endX, endY) = collectRegion1 rySq rxSq cx cy nextX nextY nextD color
+       in (pixels ++ restPixels, endX, endY)
 
--- | Ellipse region 2 (where dy/dx < -1).
-ellipseRegion2 :: Canvas -> Int -> Int -> Int -> Int -> Color -> Int -> Int -> Int -> Canvas
-ellipseRegion2 canvas cx cy rx ry color x y d
-  | y < 0 = canvas
+-- | Collect ellipse region 2 outline pixels (where dy/dx < -1).
+collectRegion2 :: Int -> Int -> Int -> Int -> Int -> Int -> Int -> Color -> [(Int, Int, Color)]
+collectRegion2 rxSq rySq cx cy x y d color
+  | y < 0 = []
   | otherwise =
-      let drawn = plotEllipsePoints canvas cx cy x y color
+      let pixels = ellipseQuadPixels cx cy x y color
           nextY = y - 1
           (nextD, nextX) =
             if d > 0
               then (d - rxSq * (2 * nextY + 1), x)
               else (d + rySq * (2 * x + 2) - rxSq * (2 * nextY + 1), x + 1)
-       in ellipseRegion2 drawn cx cy rx ry color nextX nextY nextD
-  where
-    rxSq = rx * rx
-    rySq = ry * ry
+       in pixels ++ collectRegion2 rxSq rySq cx cy nextX nextY nextD color
 
--- | Plot 4 symmetric ellipse points.
-plotEllipsePoints :: Canvas -> Int -> Int -> Int -> Int -> Color -> Canvas
-plotEllipsePoints c cx cy x y color =
-  setPixel
-    ( setPixel
-        ( setPixel
-            (setPixel c (cx + x) (cy + y) color)
-            (cx - x)
-            (cy + y)
-            color
-        )
-        (cx + x)
-        (cy - y)
-        color
-    )
-    (cx - x)
-    (cy - y)
-    color
+-- | Generate the 4 symmetric ellipse outline points.
+ellipseQuadPixels :: Int -> Int -> Int -> Int -> Color -> [(Int, Int, Color)]
+ellipseQuadPixels cx cy x y color =
+  [ (cx + x, cy + y, color),
+    (cx - x, cy + y, color),
+    (cx + x, cy - y, color),
+    (cx - x, cy - y, color)
+  ]

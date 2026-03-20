@@ -92,7 +92,7 @@ Import (BMP/PNG) → Canvas ─────────────────�
 Add to your `.cabal` file:
 
 ```cabal
-build-depends: gb-sprite >= 0.5
+build-depends: gb-sprite >= 0.5.2
 ```
 
 ### Generating sprites
@@ -165,6 +165,12 @@ trimTransparent :: Canvas -> Canvas
 canvasOpacity   :: Double -> Canvas -> Canvas
 mapPixels       :: (Color -> Color) -> Canvas -> Canvas
 pixelFold       :: (a -> Int -> Int -> Color -> a) -> a -> Canvas -> a
+
+-- Bulk operations (efficient batch drawing)
+generateCanvasPixels :: Int -> Int -> (Int -> Int -> Color) -> Canvas
+bulkSetPixels        :: Canvas -> [(Int, Int, Color)] -> Canvas
+bulkHSpans           :: Canvas -> Color -> [(Int, Int, Int)] -> Canvas
+bulkBlendPixels      :: Canvas -> [(Int, Int, Color)] -> Canvas
 ```
 
 ### Draw

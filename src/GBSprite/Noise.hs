@@ -25,8 +25,9 @@ module GBSprite.Noise
   )
 where
 
+import Data.Bits ((.&.))
 import Data.Word (Word8)
-import GBSprite.Canvas (Canvas (..), generatePixelData)
+import GBSprite.Canvas (Canvas (..), generateCanvasPixels)
 import GBSprite.Color (Color (..), lerp)
 
 -- | Generate a grayscale value noise canvas.
@@ -49,15 +50,9 @@ valueNoise w h seed scale =
 -- instead of black and white.
 valueNoiseColor :: Int -> Int -> Int -> Double -> Color -> Color -> Canvas
 valueNoiseColor w h seed scale startColor endColor =
-  let pixels = generatePixelData (w * h * bytesPerPixel) $ \i ->
-        let pixIdx = i `div` bytesPerPixel
-            channel = i `mod` bytesPerPixel
-            x = pixIdx `mod` w
-            y = pixIdx `div` w
-            noiseVal = sampleNoise seed scale x y
-            Color r g b a = lerp noiseVal startColor endColor
-         in colorChannel channel r g b a
-   in Canvas w h pixels
+  generateCanvasPixels w h $ \x y ->
+    let noiseVal = sampleNoise seed scale x y
+     in lerp noiseVal startColor endColor
 
 -- | Generate fractal Brownian motion noise.
 --
@@ -67,15 +62,10 @@ valueNoiseColor w h seed scale startColor endColor =
 fbm :: Int -> Int -> Int -> Int -> Double -> Canvas
 fbm w h seed octaves scale =
   let clampedOctaves = max 1 octaves
-      pixels = generatePixelData (w * h * bytesPerPixel) $ \i ->
-        let pixIdx = i `div` bytesPerPixel
-            channel = i `mod` bytesPerPixel
-            x = pixIdx `mod` w
-            y = pixIdx `div` w
-            noiseVal = fbmSample seed clampedOctaves scale x y
+   in generateCanvasPixels w h $ \x y ->
+        let noiseVal = fbmSample seed clampedOctaves scale x y
             gray = clampByte (round (noiseVal * channelMaxF))
-         in colorChannel channel gray gray gray maxAlpha
-   in Canvas w h pixels
+         in Color gray gray gray maxAlpha
 
 -- ---------------------------------------------------------------------------
 -- Noise sampling
@@ -127,25 +117,11 @@ latticeValue seed x y =
    in fromIntegral hash / lcgMaxF
 
 -- | LCG hash function for deterministic pseudo-random values.
+-- Uses bitmask instead of modulus since lcgModulus is 2^31.
 lcgHash :: Int -> Int
 lcgHash s =
-  let step v = (v * lcgMultiplier + lcgIncrement) `mod` lcgModulus
+  let step v = (v * lcgMultiplier + lcgIncrement) .&. lcgBitmask
    in step (step (step s))
-
--- ---------------------------------------------------------------------------
--- Internal helpers
--- ---------------------------------------------------------------------------
-
--- | Number of bytes per pixel (RGBA).
-bytesPerPixel :: Int
-bytesPerPixel = 4
-
--- | Extract an RGBA channel by index (0=R, 1=G, 2=B, 3=A).
-colorChannel :: Int -> Word8 -> Word8 -> Word8 -> Word8 -> Word8
-colorChannel 0 r _ _ _ = r
-colorChannel 1 _ g _ _ = g
-colorChannel 2 _ _ b _ = b
-colorChannel _ _ _ _ a = a
 
 -- ---------------------------------------------------------------------------
 -- Constants
@@ -167,9 +143,9 @@ lcgMultiplier = 1103515245
 lcgIncrement :: Int
 lcgIncrement = 12345
 
--- | LCG modulus.
-lcgModulus :: Int
-lcgModulus = 2147483648
+-- | LCG bitmask (2^31 - 1, for fast modular arithmetic via bitwise AND).
+lcgBitmask :: Int
+lcgBitmask = 2147483647
 
 -- | LCG max value as Double (for normalization).
 lcgMaxF :: Double
@@ -212,15 +188,10 @@ channelMaxI = 255
 -- for smoother, more organic results than value noise.
 perlinNoise :: Int -> Int -> Int -> Double -> Canvas
 perlinNoise w h seed scale =
-  let pixels = generatePixelData (w * h * bytesPerPixel) $ \i ->
-        let pixIdx = i `div` bytesPerPixel
-            channel = i `mod` bytesPerPixel
-            x = pixIdx `mod` w
-            y = pixIdx `div` w
-            noiseVal = samplePerlin seed scale x y
-            gray = clampByte (round (noiseVal * channelMaxF))
-         in colorChannel channel gray gray gray maxAlpha
-   in Canvas w h pixels
+  generateCanvasPixels w h $ \x y ->
+    let noiseVal = samplePerlin seed scale x y
+        gray = clampByte (round (noiseVal * channelMaxF))
+     in Color gray gray gray maxAlpha
 
 samplePerlin :: Int -> Double -> Int -> Int -> Double
 samplePerlin seed scale x y =
@@ -245,12 +216,13 @@ samplePerlin seed scale x y =
 gradDot :: Int -> Int -> Int -> Double -> Double -> Double
 gradDot seed gx gy dx dy =
   let hash = lcgHash (seed + gx * latticeHashX + gy * latticeHashY)
-      gradIdx = hash `mod` gradientCount
+      gradIdx = hash .&. gradientMask
       (gradX, gradY) = gradientVector gradIdx
    in gradX * dx + gradY * dy
 
-gradientCount :: Int
-gradientCount = 8
+-- | Bitmask for gradient index (8 gradients, power of 2).
+gradientMask :: Int
+gradientMask = 7
 
 gradientVector :: Int -> (Double, Double)
 gradientVector 0 = (1.0, 0.0)
@@ -277,15 +249,10 @@ invSqrt2 = 0.7071067811865476
 -- Same API as 'perlinNoise': @simplexNoise width height seed scale@.
 simplexNoise :: Int -> Int -> Int -> Double -> Canvas
 simplexNoise w h seed scale =
-  let pixels = generatePixelData (w * h * bytesPerPixel) $ \i ->
-        let pixIdx = i `div` bytesPerPixel
-            channel = i `mod` bytesPerPixel
-            x = pixIdx `mod` w
-            y = pixIdx `div` w
-            noiseVal = sampleSimplex seed scale x y
-            gray = clampByte (round (noiseVal * channelMaxF))
-         in colorChannel channel gray gray gray maxAlpha
-   in Canvas w h pixels
+  generateCanvasPixels w h $ \x y ->
+    let noiseVal = sampleSimplex seed scale x y
+        gray = clampByte (round (noiseVal * channelMaxF))
+     in Color gray gray gray maxAlpha
 
 sampleSimplex :: Int -> Double -> Int -> Int -> Double
 sampleSimplex seed scale x y =
@@ -385,15 +352,10 @@ simplexGradCount = 12
 worleyNoise :: Int -> Int -> Int -> Int -> Double -> Canvas
 worleyNoise w h seed pointCount scale =
   let clampedPoints = max 1 pointCount
-      pixels = generatePixelData (w * h * bytesPerPixel) $ \i ->
-        let pixIdx = i `div` bytesPerPixel
-            channel = i `mod` bytesPerPixel
-            x = pixIdx `mod` w
-            y = pixIdx `div` w
-            noiseVal = sampleWorley seed clampedPoints scale x y
+   in generateCanvasPixels w h $ \x y ->
+        let noiseVal = sampleWorley seed clampedPoints scale x y
             gray = clampByte (round (noiseVal * channelMaxF))
-         in colorChannel channel gray gray gray maxAlpha
-   in Canvas w h pixels
+         in Color gray gray gray maxAlpha
 
 sampleWorley :: Int -> Int -> Double -> Int -> Int -> Double
 sampleWorley seed pointCount scale x y =
@@ -449,15 +411,10 @@ worleyPointOffset = 7919
 turbulence :: Int -> Int -> Int -> Int -> Double -> Canvas
 turbulence w h seed octaves scale =
   let clampedOctaves = max 1 octaves
-      pixels = generatePixelData (w * h * bytesPerPixel) $ \i ->
-        let pixIdx = i `div` bytesPerPixel
-            channel = i `mod` bytesPerPixel
-            x = pixIdx `mod` w
-            y = pixIdx `div` w
-            noiseVal = turbulenceSample seed clampedOctaves scale x y
+   in generateCanvasPixels w h $ \x y ->
+        let noiseVal = turbulenceSample seed clampedOctaves scale x y
             gray = clampByte (round (noiseVal * channelMaxF))
-         in colorChannel channel gray gray gray maxAlpha
-   in Canvas w h pixels
+         in Color gray gray gray maxAlpha
 
 turbulenceSample :: Int -> Int -> Double -> Int -> Int -> Double
 turbulenceSample seed octaves scale x y =

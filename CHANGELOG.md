@@ -1,5 +1,33 @@
 # Changelog
 
+## 0.5.2.0
+
+### Performance
+
+Library-wide optimization pass targeting large canvas rendering (4K / procedural generation). Drawing primitives are now **orders of magnitude faster** on large canvases.
+
+- **Canvas: copy-and-poke drawing** (`Canvas`): All drawing primitives (`drawLine`, `drawRect`, `fillRect`, `drawCircle`, `fillCircle`, `hLine`, `floodFill`) now copy the pixel buffer once and write directly into the copy. Previously, each pixel write copied the entire buffer via `ByteString` split/concat. A `fillCircle` of radius 100 on a 1000×1000 canvas went from ~31,000 full buffer copies to 1.
+- **Canvas: `mapPixels` calls function once per pixel** — was 4× (once per RGBA channel). Functions like `grayscale`, `adjustBrightness`, `shiftHue`, `applyLUT`, etc. all benefit.
+- **Canvas: `getPixel` uses `unsafeIndex`** — eliminates 4 redundant bounds checks per read (after `inBounds` check). Benefits bilinear sampling in scaling/rotation.
+- **Canvas: `pixelFold` tracks coordinates directly** — eliminates `div`/`mod` per pixel.
+- **Canvas: `fromPixels` uses direct pokes** — no intermediate list allocation.
+- **Draw: single-copy polygon/ellipse/curve rendering** (`Draw`): `fillPolygon`, `fillEllipse`, `drawEllipse`, `drawPolygon`, `drawArc`, `drawBezier`, `drawCubicBezier`, `drawCatmullRom`, `drawAALine`, and `patternFill` now collect all pixels/spans and apply in a single buffer copy via the new bulk APIs.
+- **Transform: `generateCanvasPixels` eliminates per-byte division** (`Transform`): All transforms (`flipH`/`flipV`, `rotate*`, `scaleNearest`, `scaleBilinear`, `scaleTo`, `shearH`/`shearV`, `outline`, `dropShadow`) now compute one color per pixel instead of dispatching per byte. Eliminates ~16 integer divisions per pixel — significant at 4K (8M+ pixels).
+- **Noise: bitmask LCG hash** (`Noise`): LCG hash uses bitwise `.&.` instead of `mod 2^31` (~10–20× faster per hash). Perlin gradient index uses `.&.` for power-of-2 table size. All noise generators use `generateCanvasPixels` for the same div/mod elimination.
+- **VFX: bulk ring drawing** (`VFX`): Ring outlines use `bulkSetPixels` (1 buffer copy) instead of per-pixel `setPixel` chains. LCG uses bitmask.
+- **Gradient: `generateCanvasPixels`** (`Gradient`): Same per-pixel div/mod elimination.
+- **Dither: `generateCanvasPixels`** (`Dither`): Same per-pixel div/mod elimination.
+- **Tilemap: bulk tile stamping** (`Tilemap`): `stampTile` uses `bulkSetPixels` instead of per-pixel `setPixel` loop.
+- **Text: bulk glyph rendering** (`Text`): Glyph bit-blitting uses `bulkSetPixels` instead of per-bit `setPixel` loop.
+
+### New Features
+
+- **Bulk drawing APIs** (`Canvas`): `generateCanvasPixels`, `bulkSetPixels`, `bulkHSpans`, `bulkBlendPixels` — low-level batch operations for efficient custom drawing. Used internally by all optimized primitives, also exported for user code.
+
+### Tests
+
+- 615 tests (all passing — exact pixel-level output preserved).
+
 ## 0.5.1.0
 
 ### New Features

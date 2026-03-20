@@ -15,7 +15,7 @@ where
 import qualified Data.ByteString as BS
 import Data.List (foldl')
 import Data.Word (Word8)
-import GBSprite.Canvas (Canvas (..), generatePixelData, getPixel)
+import GBSprite.Canvas (Canvas (..), generateCanvasPixels, getPixel)
 import GBSprite.Color (Color (..))
 import GBSprite.Palette (Palette (..))
 
@@ -39,17 +39,11 @@ orderedDither _ (Palette []) canvas = canvas
 orderedDither matrix palette canvas =
   let w = cWidth canvas
       h = cHeight canvas
-      pixels = generatePixelData (w * h * bytesPerPixel) $ \i ->
-        let pixIdx = i `div` bytesPerPixel
-            channel = i `mod` bytesPerPixel
-            x = pixIdx `mod` w
-            y = pixIdx `div` w
-            pixel = getPixel canvas x y
+   in generateCanvasPixels w h $ \x y ->
+        let pixel = getPixel canvas x y
             threshold = bayerThreshold matrix x y
             adjusted = adjustColor threshold pixel
-            Color r g b a = findClosest palette adjusted
-         in colorChannel channel r g b a
-   in Canvas w h pixels
+         in findClosest palette adjusted
 
 -- | Get the Bayer threshold at a pixel position, normalized to [-0.5, 0.5].
 bayerThreshold :: DitherMatrix -> Int -> Int -> Double
@@ -202,17 +196,6 @@ bayer8 =
 -- ---------------------------------------------------------------------------
 -- Internal helpers
 -- ---------------------------------------------------------------------------
-
--- | Number of bytes per pixel (RGBA).
-bytesPerPixel :: Int
-bytesPerPixel = 4
-
--- | Extract an RGBA channel by index (0=R, 1=G, 2=B, 3=A).
-colorChannel :: Int -> Word8 -> Word8 -> Word8 -> Word8 -> Word8
-colorChannel 0 r _ _ _ = r
-colorChannel 1 _ g _ _ = g
-colorChannel 2 _ _ b _ = b
-colorChannel _ _ _ _ a = a
 
 -- | Dither strength (how much the threshold affects the color).
 ditherStrength :: Double

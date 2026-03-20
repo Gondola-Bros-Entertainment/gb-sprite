@@ -1,7 +1,7 @@
 -- | Canvas transformations: flip, rotate, scale.
 --
 -- All transforms produce new canvases — the originals are unmodified.
--- Uses single-pass vector generation for O(n) performance.
+-- Uses single-pass pixel generation for O(n) performance.
 module GBSprite.Transform
   ( -- * Flip
     flipH,
@@ -28,21 +28,22 @@ module GBSprite.Transform
   )
 where
 
-import qualified Data.ByteString as BS
 import Data.ByteString.Unsafe (unsafeIndex)
-import Data.Word (Word8)
-import GBSprite.Canvas (Canvas (..), generatePixelData, getPixel)
+import GBSprite.Canvas (Canvas (..), generateCanvasPixels, getPixel)
 import GBSprite.Color (Color (..), alphaBlend, lerp, transparent)
 
 -- | Flip horizontally (mirror left-right).
 flipH :: Canvas -> Canvas
 flipH canvas =
   let w = cWidth canvas
-      h = cHeight canvas
       src = cPixels canvas
-   in Canvas w h $ generatePixels w h $ \x y ->
+   in generateCanvasPixels w (cHeight canvas) $ \x y ->
         let srcIdx = (y * w + (w - 1 - x)) * bytesPerPixel
-         in \ch -> src `unsafeIndex` (srcIdx + ch)
+         in Color
+              (src `unsafeIndex` srcIdx)
+              (src `unsafeIndex` (srcIdx + 1))
+              (src `unsafeIndex` (srcIdx + 2))
+              (src `unsafeIndex` (srcIdx + 3))
 
 -- | Flip vertically (mirror top-bottom).
 flipV :: Canvas -> Canvas
@@ -50,9 +51,13 @@ flipV canvas =
   let w = cWidth canvas
       h = cHeight canvas
       src = cPixels canvas
-   in Canvas w h $ generatePixels w h $ \x y ->
+   in generateCanvasPixels w h $ \x y ->
         let srcIdx = ((h - 1 - y) * w + x) * bytesPerPixel
-         in \ch -> src `unsafeIndex` (srcIdx + ch)
+         in Color
+              (src `unsafeIndex` srcIdx)
+              (src `unsafeIndex` (srcIdx + 1))
+              (src `unsafeIndex` (srcIdx + 2))
+              (src `unsafeIndex` (srcIdx + 3))
 
 -- | Rotate 90 degrees clockwise. Width and height swap.
 rotate90 :: Canvas -> Canvas
@@ -60,9 +65,13 @@ rotate90 canvas =
   let w = cWidth canvas
       h = cHeight canvas
       src = cPixels canvas
-   in Canvas h w $ generatePixels h w $ \x y ->
+   in generateCanvasPixels h w $ \x y ->
         let srcIdx = ((h - 1 - x) * w + y) * bytesPerPixel
-         in \ch -> src `unsafeIndex` (srcIdx + ch)
+         in Color
+              (src `unsafeIndex` srcIdx)
+              (src `unsafeIndex` (srcIdx + 1))
+              (src `unsafeIndex` (srcIdx + 2))
+              (src `unsafeIndex` (srcIdx + 3))
 
 -- | Rotate 180 degrees.
 rotate180 :: Canvas -> Canvas
@@ -70,19 +79,26 @@ rotate180 canvas =
   let w = cWidth canvas
       h = cHeight canvas
       src = cPixels canvas
-   in Canvas w h $ generatePixels w h $ \x y ->
+   in generateCanvasPixels w h $ \x y ->
         let srcIdx = ((h - 1 - y) * w + (w - 1 - x)) * bytesPerPixel
-         in \ch -> src `unsafeIndex` (srcIdx + ch)
+         in Color
+              (src `unsafeIndex` srcIdx)
+              (src `unsafeIndex` (srcIdx + 1))
+              (src `unsafeIndex` (srcIdx + 2))
+              (src `unsafeIndex` (srcIdx + 3))
 
 -- | Rotate 270 degrees clockwise (= 90 degrees counter-clockwise).
 rotate270 :: Canvas -> Canvas
 rotate270 canvas =
   let w = cWidth canvas
-      h = cHeight canvas
       src = cPixels canvas
-   in Canvas h w $ generatePixels h w $ \x y ->
+   in generateCanvasPixels (cHeight canvas) w $ \x y ->
         let srcIdx = (x * w + (w - 1 - y)) * bytesPerPixel
-         in \ch -> src `unsafeIndex` (srcIdx + ch)
+         in Color
+              (src `unsafeIndex` srcIdx)
+              (src `unsafeIndex` (srcIdx + 1))
+              (src `unsafeIndex` (srcIdx + 2))
+              (src `unsafeIndex` (srcIdx + 3))
 
 -- | Scale using nearest-neighbor interpolation.
 --
@@ -96,9 +112,13 @@ scaleNearest factor canvas
           newW = w * factor
           newH = cHeight canvas * factor
           src = cPixels canvas
-       in Canvas newW newH $ generatePixels newW newH $ \x y ->
+       in generateCanvasPixels newW newH $ \x y ->
             let srcIdx = ((y `div` factor) * w + (x `div` factor)) * bytesPerPixel
-             in \ch -> src `unsafeIndex` (srcIdx + ch)
+             in Color
+                  (src `unsafeIndex` srcIdx)
+                  (src `unsafeIndex` (srcIdx + 1))
+                  (src `unsafeIndex` (srcIdx + 2))
+                  (src `unsafeIndex` (srcIdx + 3))
 
 -- | Add an outline around non-transparent pixels.
 --
@@ -108,19 +128,18 @@ outline :: Color -> Canvas -> Canvas
 outline outlineColor canvas =
   let w = cWidth canvas
       h = cHeight canvas
-      Color oR oG oB oA = outlineColor
-      pixels = generatePixelData (w * h * bytesPerPixel) $ \i ->
-        let pixIdx = i `div` bytesPerPixel
-            channel = i `mod` bytesPerPixel
-            x = pixIdx `mod` w
-            y = pixIdx `div` w
-            pixel = getPixel canvas x y
+      src = cPixels canvas
+   in generateCanvasPixels w h $ \x y ->
+        let pixel = getPixel canvas x y
          in if colorA pixel == 0 && hasOpaqueNeighbor w h x y
-              then colorChannel channel oR oG oB oA
+              then outlineColor
               else
-                let srcIdx = pixIdx * bytesPerPixel + channel
-                 in unsafeIndex (cPixels canvas) srcIdx
-   in Canvas w h pixels
+                let srcIdx = (y * w + x) * bytesPerPixel
+                 in Color
+                      (src `unsafeIndex` srcIdx)
+                      (src `unsafeIndex` (srcIdx + 1))
+                      (src `unsafeIndex` (srcIdx + 2))
+                      (src `unsafeIndex` (srcIdx + 3))
   where
     hasOpaqueNeighbor w h x y =
       checkNeighbor (x - 1) y
@@ -146,13 +165,8 @@ dropShadow dx dy shadowColor canvas =
       shadowOffY = max 0 dy
       origOffX = max 0 (negate dx)
       origOffY = max 0 (negate dy)
-      Color sR sG sB sA = shadowColor
-      pixels = generatePixelData (padW * padH * bytesPerPixel) $ \i ->
-        let pixIdx = i `div` bytesPerPixel
-            channel = i `mod` bytesPerPixel
-            px = pixIdx `mod` padW
-            py = pixIdx `div` padW
-            -- Original sprite coordinates
+   in generateCanvasPixels padW padH $ \px py ->
+        let -- Original sprite coordinates
             ox = px - origOffX
             oy = py - origOffY
             origPixel =
@@ -170,17 +184,13 @@ dropShadow dx dy shadowColor canvas =
                 && colorA (getPixel canvas sx sy) > 0
          in if colorA origPixel > 0
               then
-                -- Original on top, blend over shadow if present
                 if hasShadow
-                  then
-                    let Color bR bG bB bA = alphaBlend origPixel shadowColor
-                     in colorChannel channel bR bG bB bA
-                  else colorChannel channel (colorR origPixel) (colorG origPixel) (colorB origPixel) (colorA origPixel)
+                  then alphaBlend origPixel shadowColor
+                  else origPixel
               else
                 if hasShadow
-                  then colorChannel channel sR sG sB sA
-                  else 0
-   in Canvas padW padH pixels
+                  then shadowColor
+                  else transparent
 
 -- | Rotate by an arbitrary angle (degrees, clockwise) with bilinear
 -- interpolation. The output canvas is sized to contain the full
@@ -202,13 +212,12 @@ rotateArbitrary angleDeg canvas
           centerSrcY = fromIntegral h / 2.0 :: Double
           centerDstX = fromIntegral newW / 2.0 :: Double
           centerDstY = fromIntegral newH / 2.0 :: Double
-       in Canvas newW newH $ generatePixels newW newH $ \ox oy ->
-            let dx = fromIntegral ox - centerDstX + 0.5
-                dy = fromIntegral oy - centerDstY + 0.5
-                srcX = dx * cosA + dy * sinA + centerSrcX - 0.5
-                srcY = negate dx * sinA + dy * cosA + centerSrcY - 0.5
-                Color sr sg sb sa = bilinearSample canvas srcX srcY
-             in \ch -> colorChannel ch sr sg sb sa
+       in generateCanvasPixels newW newH $ \ox oy ->
+            let dxF = fromIntegral ox - centerDstX + 0.5
+                dyF = fromIntegral oy - centerDstY + 0.5
+                srcX = dxF * cosA + dyF * sinA + centerSrcX - 0.5
+                srcY = negate dxF * sinA + dyF * cosA + centerSrcY - 0.5
+             in bilinearSample canvas srcX srcY
 
 -- | Scale using bilinear interpolation. Works for both up and down
 -- scaling. Factor must be positive (values <= 0 are treated as 1).
@@ -235,17 +244,15 @@ shearH :: Double -> Canvas -> Canvas
 shearH factor canvas
   | abs factor < scaleEpsilon = canvas
   | otherwise =
-      let w = cWidth canvas
-          h = cHeight canvas
+      let h = cHeight canvas
           maxShift = abs factor * fromIntegral h / 2.0
-          newW = w + ceiling (2.0 * maxShift)
+          newW = cWidth canvas + ceiling (2.0 * maxShift)
           offsetX = ceiling maxShift :: Int
-       in Canvas newW h $ generatePixels newW h $ \ox oy ->
+       in generateCanvasPixels newW h $ \ox oy ->
             let shift = factor * (fromIntegral oy - fromIntegral h / 2.0)
                 srcX = fromIntegral ox - fromIntegral offsetX - shift
                 srcY = fromIntegral oy
-                Color sr sg sb sa = bilinearSample canvas srcX srcY
-             in \ch -> colorChannel ch sr sg sb sa
+             in bilinearSample canvas srcX srcY
 
 -- | Shear vertically. Each column is shifted by @factor * (x - width\/2)@
 -- pixels. Positive values shift right columns down.
@@ -254,16 +261,14 @@ shearV factor canvas
   | abs factor < scaleEpsilon = canvas
   | otherwise =
       let w = cWidth canvas
-          h = cHeight canvas
           maxShift = abs factor * fromIntegral w / 2.0
-          newH = h + ceiling (2.0 * maxShift)
+          newH = cHeight canvas + ceiling (2.0 * maxShift)
           offsetY = ceiling maxShift :: Int
-       in Canvas w newH $ generatePixels w newH $ \ox oy ->
+       in generateCanvasPixels w newH $ \ox oy ->
             let shift = factor * (fromIntegral ox - fromIntegral w / 2.0)
                 srcX = fromIntegral ox
                 srcY = fromIntegral oy - fromIntegral offsetY - shift
-                Color sr sg sb sa = bilinearSample canvas srcX srcY
-             in \ch -> colorChannel ch sr sg sb sa
+             in bilinearSample canvas srcX srcY
 
 -- ---------------------------------------------------------------------------
 -- Internal helpers
@@ -281,11 +286,10 @@ scaleToImpl newW newH canvas =
       h = cHeight canvas
       ratioX = fromIntegral w / fromIntegral newW :: Double
       ratioY = fromIntegral h / fromIntegral newH :: Double
-   in Canvas newW newH $ generatePixels newW newH $ \ox oy ->
+   in generateCanvasPixels newW newH $ \ox oy ->
         let srcX = (fromIntegral ox + 0.5) * ratioX - 0.5
             srcY = (fromIntegral oy + 0.5) * ratioY - 0.5
-            Color sr sg sb sa = bilinearSample canvas srcX srcY
-         in \ch -> colorChannel ch sr sg sb sa
+         in bilinearSample canvas srcX srcY
 
 bilinearSample :: Canvas -> Double -> Double -> Color
 bilinearSample canvas fx fy =
@@ -304,20 +308,3 @@ bilinearSample canvas fx fy =
 -- | Number of bytes per pixel (RGBA).
 bytesPerPixel :: Int
 bytesPerPixel = 4
-
--- | Generate a pixel vector from a coordinate-to-channel function.
--- The function receives (x, y) and returns a channel reader (channelIdx -> byte).
-generatePixels :: Int -> Int -> (Int -> Int -> Int -> Word8) -> BS.ByteString
-generatePixels w h pixelFn = generatePixelData (w * h * bytesPerPixel) $ \i ->
-  let pixIdx = i `div` bytesPerPixel
-      channel = i `mod` bytesPerPixel
-      x = pixIdx `mod` w
-      y = pixIdx `div` w
-   in pixelFn x y channel
-
--- | Extract an RGBA channel by index (0=R, 1=G, 2=B, 3=A).
-colorChannel :: Int -> Word8 -> Word8 -> Word8 -> Word8 -> Word8
-colorChannel 0 r _ _ _ = r
-colorChannel 1 _ g _ _ = g
-colorChannel 2 _ _ b _ = b
-colorChannel _ _ _ _ a = a

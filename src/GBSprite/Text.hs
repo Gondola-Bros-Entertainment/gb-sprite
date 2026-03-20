@@ -20,7 +20,7 @@ where
 import Data.Bits (testBit)
 import Data.List (foldl')
 import Data.Word (Word8)
-import GBSprite.Canvas (Canvas, newCanvas, setPixel)
+import GBSprite.Canvas (Canvas, bulkSetPixels, newCanvas)
 import GBSprite.Color (Color, transparent)
 import GBSprite.Compose (stamp)
 
@@ -82,20 +82,14 @@ textHeight = fontHeight
 -- ---------------------------------------------------------------------------
 
 drawGlyph :: Canvas -> Int -> Color -> [Word8] -> Int -> Canvas
-drawGlyph canvas _ _ [] _ = canvas
-drawGlyph canvas w color (row : rows) y =
-  let drawn = drawRow canvas w color row y 0
-   in drawGlyph drawn w color rows (y + 1)
-
-drawRow :: Canvas -> Int -> Color -> Word8 -> Int -> Int -> Canvas
-drawRow canvas w _ _ _ x | x >= w = canvas
-drawRow canvas w color row y x =
-  let bitIdx = w - 1 - x
-      drawn =
-        if testBit row bitIdx
-          then setPixel canvas x y color
-          else canvas
-   in drawRow drawn w color row y (x + 1)
+drawGlyph canvas w color rows startY =
+  let pixels =
+        [ (x, y, color)
+        | (y, row) <- zip [startY ..] rows,
+          x <- [0 .. w - 1],
+          testBit row (w - 1 - x)
+        ]
+   in bulkSetPixels canvas pixels
 
 -- ---------------------------------------------------------------------------
 -- Built-in font constants
