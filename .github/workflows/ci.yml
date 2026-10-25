@@ -53,7 +53,9 @@ jobs:
         include:
           - os: ubuntu-latest
             name: Linux
-          - os: macos-latest
+          # Not macos-latest: GHC 9.8 cannot link against the macOS 26 image's SDK
+          # ("tapi error: malformed file ... unknown architecture").
+          - os: macos-15
             name: macOS
           - os: windows-latest
             name: Windows
